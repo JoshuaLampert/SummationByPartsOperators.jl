@@ -171,5 +171,17 @@ if VERSION >= v"1.9"
       M = mass_matrix(D)
       @test M * D.D + D.D' * M ≈ B
     end
+
+    # test if operator is consistent also without the constant basis function
+    let basis_functions = [identity, exp]
+      D = function_space_operator(basis_functions, nodes, source)
+
+      @test grid(D) ≈ nodes
+      @test all(isapprox.(D * ones(N), zeros(N); atol = 8e-15))
+      @test D * nodes ≈ ones(N)
+      @test D * exp.(nodes) ≈ exp.(nodes)
+      M = mass_matrix(D)
+      @test M * D.D + D.D' * M ≈ B
+    end
   end
 end
