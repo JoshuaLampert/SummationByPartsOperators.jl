@@ -76,14 +76,16 @@ function create_S(sigma, N)
     return S
 end
 
-function set_S!(S, sigma, N)
+@views function set_S!(S, sigma, N)
     k = 1
-    for i in 1:N
-        for j in (i + 1):N
+    for i in 1:(N - 1)
+        for j in (i + 1):(N - 1)
             S[i, j] = sigma[k]
             S[j, i] = -sigma[k]
             k += 1
         end
+        S[i, N] = -sum(S[i, 1:(N - 1)]) + 0.5 * (i == 1)
+        S[N, i] = -S[i, N]
     end
 end
 
@@ -121,17 +123,19 @@ function construct_function_space_operator(basis_functions, nodes,
     A = zeros(eltype(nodes), N, K)
     SV = zeros(eltype(nodes), N, K)
     PV_x = zeros(eltype(nodes), N, K)
-    daij_dsigmak = zeros(eltype(nodes), N, K, L)
+    daij_dsigmak = zeros(eltype(nodes), N, K, L - N + 1)
     daij_drhok = zeros(eltype(nodes), N, K, N)
-    p = (V, V_x, R, x_length, S, A, SV, PV_x, daij_dsigmak, daij_drhok)
+    dsigmatildel_dsigmak = zeros(Int8, N - 1, L - N + 1)
+    p = (V, V_x, R, x_length, S, A, SV, PV_x, daij_dsigmak, daij_drhok, dsigmatildel_dsigmak)
 
-    x0 = zeros(L + N)
+    x0 = rand(L + 1) # first L - N + 1 are sigma, last N are rho
     fg!(F, G, x) = optimization_function_and_grad!(F, G, x, p)
     result = optimize(Optim.only_fg!(fg!), x0, LBFGS(), options)
+    display(result)
 
     x = minimizer(result)
-    sigma = x[1:L]
-    rho = x[(L + 1):end]
+    sigma = x[1:(L - N + 1)]
+    rho = x[(L - N + 2):end]
     S = create_S(sigma, N)
     P = create_P(rho, x_length)
     weights = diag(P)
@@ -141,11 +145,11 @@ function construct_function_space_operator(basis_functions, nodes,
 end
 
 @views function optimization_function_and_grad!(F, G, x, p)
-    V, V_x, R, x_length, S, A, SV, PV_x, daij_dsigmak, daij_drhok = p
+    V, V_x, R, x_length, S, A, SV, PV_x, daij_dsigmak, daij_drhok, dsigmatildel_dsigmak = p
     (N, _) = size(R)
     L = div(N * (N - 1), 2)
-    sigma = x[1:L]
-    rho = x[(L + 1):end]
+    sigma = x[1:(L - N + 1)]
+    rho = x[(L - N + 2):end]
     set_S!(S, sigma, N)
     P = create_P(rho, x_length)
     mul!(SV, S, V)
@@ -153,30 +157,34 @@ end
     @. A = SV - PV_x + R
     if !isnothing(G)
         fill!(daij_dsigmak, zero(eltype(daij_dsigmak)))
+        fill!(dsigmatildel_dsigmak, zero(eltype(dsigmatildel_dsigmak)))
         for k in axes(daij_dsigmak, 3)
             for j in axes(daij_dsigmak, 2)
-                for i in axes(daij_dsigmak, 1)
-                    l_tilde = k + i - N * (i - 1) + div(i * (i - 1), 2)
+                for i in 1:(N - 1)
+                    l_tilde = k + i - (N - 1) * (i - 1) + div(i * (i - 1), 2)
                     # same as above, but needs more type conversions
                     # l_tilde = Int(k + i - (i - 1) * (N - i/2))
-                    if i + 1 <= l_tilde <= N
-                        daij_dsigmak[i, j, k] += V[l_tilde, j]
+                    if i + 1 <= l_tilde <= N - 1
+                        daij_dsigmak[i, j, k] += (V[l_tilde, j] - V[N, j])
+                        dsigmatildel_dsigmak[i, k] = -1
                     else
-                        C = N^2 - 3*N + 2*i - 2*k + 1/4
+                        C = N^2 - 5*N + 2*i - 2*k + 17/4
                         if C >= 0
                             D = sqrt(C)
                             D_plus_one_half = D + 0.5
                             D_plus_one_half_trunc = trunc(D_plus_one_half)
                             if D_plus_one_half == D_plus_one_half_trunc
                                 int_D_plus_one_half = trunc(Int, D_plus_one_half_trunc)
-                                l_hat = N - int_D_plus_one_half
+                                l_hat = N - 1 - int_D_plus_one_half
                                 if 1 <= l_hat <= i - 1
-                                    daij_dsigmak[i, j, k] -= V[l_hat, j]
+                                    daij_dsigmak[i, j, k] += (V[N, j] - V[l_hat, j])
+                                    dsigmatildel_dsigmak[i, k] = 1
                                 end
                             end
                         end
                     end
                 end
+                daij_dsigmak[N, j, k] = -sum(dsigmatildel_dsigmak[:, k] .* V[1:(N - 1), j])
             end
         end
         sig_rho = sig.(rho)
@@ -199,7 +207,7 @@ end
             G[k] = 2 * dot(daij_dsigmak[:, :, k], A)
         end
         for k in axes(daij_drhok, 3)
-            G[L + k] = 2 * dot(daij_drhok[:, :, k], A)
+            G[L - N + 1 + k] = 2 * dot(daij_drhok[:, :, k], A)
         end
     end
     if !isnothing(F)
