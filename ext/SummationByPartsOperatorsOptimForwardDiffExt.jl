@@ -10,7 +10,7 @@ using SparseArrays: spzeros
 function SummationByPartsOperators.function_space_operator(basis_functions, nodes::Vector{T},
                                                            source::SourceOfCoefficients;
                                                            derivative_order = 1, accuracy_order = 0,
-                                                           opt_alg = LBFGS(),
+                                                           opt_alg = LBFGS(), consistency_constraint = true,
                                                            options = Options(g_tol = 1e-14, iterations = 10000),
                                                            verbose = false) where {T, SourceOfCoefficients}
 
@@ -18,7 +18,8 @@ function SummationByPartsOperators.function_space_operator(basis_functions, node
         throw(ArgumentError("Derivative order $derivative_order not implemented."))
     end
     sort!(nodes)
-    weights, D = construct_function_space_operator(basis_functions, nodes, source; opt_alg = opt_alg, options = options, verbose = verbose)
+    weights, D = construct_function_space_operator(basis_functions, nodes, source; opt_alg = opt_alg,
+                                                   consistency_constraint = consistency_constraint, options = options, verbose = verbose)
     return MatrixDerivativeOperator(first(nodes), last(nodes), nodes, weights, D, accuracy_order, source)
 end
 
@@ -72,13 +73,21 @@ function vandermonde_matrix(functions, nodes)
     return V
 end
 
-function create_S(sigma, N)
+function create_S(sigma, N, consistency_constraint)
     S = zeros(eltype(sigma), N, N)
-    set_S!(S, sigma, N)
+    set_S!(S, sigma, N, consistency_constraint)
     return S
 end
 
-@views function set_S!(S, sigma, N)
+function set_S!(S, sigma, N, consistency_constraint)
+    if consistency_constraint
+        set_S_consistency_constraint!(S, sigma, N)
+    else
+        set_S_no_consistency_constraint!(S, sigma, N)
+    end
+end
+
+@views function set_S_consistency_constraint!(S, sigma, N)
     k = 1
     for i in 1:(N - 1)
         for j in (i + 1):(N - 1)
@@ -88,6 +97,18 @@ end
         end
         S[i, N] = -sum(S[i, 1:(N - 1)]) + 0.5 * (i == 1)
         S[N, i] = -S[i, N]
+    end
+end
+
+
+function set_S_no_consistency_constraint!(S, sigma, N)
+    k = 1
+    for i in 1:N
+        for j in (i + 1):N
+            S[i, j] = sigma[k]
+            S[j, i] = -sigma[k]
+            k += 1
+        end
     end
 end
 
@@ -102,7 +123,7 @@ end
 
 function construct_function_space_operator(basis_functions, nodes,
                                            ::GlaubitzNordströmÖffner2023;
-                                           opt_alg = LBFGS(),
+                                           opt_alg = LBFGS(), consistency_constraint = true,
                                            options = Options(g_tol = 1e-14, iterations = 10000),
                                            verbose = false)
     K = length(basis_functions)
@@ -127,20 +148,24 @@ function construct_function_space_operator(basis_functions, nodes,
     A = zeros(eltype(nodes), N, K)
     SV = zeros(eltype(nodes), N, K)
     PV_x = zeros(eltype(nodes), N, K)
-    daij_dsigmak = zeros(eltype(nodes), N, K, L - N + 1)
-    daij_drhok = zeros(eltype(nodes), N, K, N)
-    dsigmatildel_dsigmak = zeros(Int8, N - 1, L - N + 1)
-    p = (V, V_x, R, x_length, S, A, SV, PV_x, daij_dsigmak, daij_drhok, dsigmatildel_dsigmak)
 
-    x0 = rand(L + 1) # first L - N + 1 are sigma, last N are rho
+    # with consistency constraint: first L - N + 1 are sigma, last N are rho
+    # without consistency constraint: first L - N + 1 are sigma, last N are rho
+    n_variables_sigma = consistency_constraint ? L - N + 1 : L
+    daij_dsigmak = zeros(eltype(nodes), N, K, n_variables_sigma)
+    daij_drhok = zeros(eltype(nodes), N, K, N)
+    dsigmatildel_dsigmak = zeros(Int8, N - 1, L - N + 1) # This is only needed if consistency_constraint is true
+    p = (V, V_x, R, x_length, S, A, SV, PV_x, daij_dsigmak, daij_drhok, dsigmatildel_dsigmak, consistency_constraint)
+
+    x0 = rand(n_variables_sigma + N)
     fg!(F, G, x) = optimization_function_and_grad!(F, G, x, p)
     result = optimize(Optim.only_fg!(fg!), x0, opt_alg, options)
     verbose && display(result)
 
     x = minimizer(result)
-    sigma = x[1:(L - N + 1)]
-    rho = x[(L - N + 2):end]
-    S = create_S(sigma, N)
+    sigma = x[1:n_variables_sigma]
+    rho = x[(n_variables_sigma + 1):end]
+    S = create_S(sigma, N, consistency_constraint)
     P = create_P(rho, x_length)
     weights = diag(P)
     Q = S + B/2
@@ -149,46 +174,50 @@ function construct_function_space_operator(basis_functions, nodes,
 end
 
 @views function optimization_function_and_grad!(F, G, x, p)
-    V, V_x, R, x_length, S, A, SV, PV_x, daij_dsigmak, daij_drhok, dsigmatildel_dsigmak = p
+    V, V_x, R, x_length, S, A, SV, PV_x, daij_dsigmak, daij_drhok, dsigmatildel_dsigmak, consistency_constraint = p
     (N, _) = size(R)
     L = div(N * (N - 1), 2)
-    sigma = x[1:(L - N + 1)]
-    rho = x[(L - N + 2):end]
-    set_S!(S, sigma, N)
+    n_variables_sigma = consistency_constraint ? L - N + 1 : L
+    sigma = x[1:n_variables_sigma]
+    rho = x[(n_variables_sigma + 1):end]
+    set_S!(S, sigma, N, consistency_constraint)
     P = create_P(rho, x_length)
     mul!(SV, S, V)
     mul!(PV_x, P, V_x)
     @. A = SV - PV_x + R
     if !isnothing(G)
+        N_or_N_minus_1 = consistency_constraint ? N - 1 : N
         fill!(daij_dsigmak, zero(eltype(daij_dsigmak)))
-        fill!(dsigmatildel_dsigmak, zero(eltype(dsigmatildel_dsigmak)))
+        consistency_constraint && fill!(dsigmatildel_dsigmak, zero(eltype(dsigmatildel_dsigmak)))
         for k in axes(daij_dsigmak, 3)
             for j in axes(daij_dsigmak, 2)
-                for i in 1:(N - 1)
-                    l_tilde = k + i - (N - 1) * (i - 1) + div(i * (i - 1), 2)
+                for i in 1:N_or_N_minus_1
+                    l_tilde = k + i - N_or_N_minus_1 * (i - 1) + div(i * (i - 1), 2)
                     # same as above, but needs more type conversions
                     # l_tilde = Int(k + i - (i - 1) * (N - i/2))
-                    if i + 1 <= l_tilde <= N - 1
-                        daij_dsigmak[i, j, k] += (V[l_tilde, j] - V[N, j])
-                        dsigmatildel_dsigmak[i, k] = -1
+                    if i + 1 <= l_tilde <= N_or_N_minus_1
+                        daij_dsigmak[i, j, k] += V[l_tilde, j]
+                        consistency_constraint && (daij_dsigmak[i, j, k] -= V[N, j])
+                        consistency_constraint && (dsigmatildel_dsigmak[i, k] = -1)
                     else
-                        C = N^2 - 5*N + 2*i - 2*k + 17/4
+                        C = N_or_N_minus_1^2 - 3*N_or_N_minus_1 + 2*i - 2*k + 1/4
                         if C >= 0
                             D = sqrt(C)
                             D_plus_one_half = D + 0.5
                             D_plus_one_half_trunc = trunc(D_plus_one_half)
                             if D_plus_one_half == D_plus_one_half_trunc
                                 int_D_plus_one_half = trunc(Int, D_plus_one_half_trunc)
-                                l_hat = N - 1 - int_D_plus_one_half
+                                l_hat = N_or_N_minus_1 - int_D_plus_one_half
                                 if 1 <= l_hat <= i - 1
-                                    daij_dsigmak[i, j, k] += (V[N, j] - V[l_hat, j])
-                                    dsigmatildel_dsigmak[i, k] = 1
+                                    daij_dsigmak[i, j, k] -= V[l_hat, j]
+                                    consistency_constraint && (daij_dsigmak[i, j, k] += V[N, j])
+                                    consistency_constraint && (dsigmatildel_dsigmak[i, k] = 1)
                                 end
                             end
                         end
                     end
                 end
-                daij_dsigmak[N, j, k] = -sum(dsigmatildel_dsigmak[:, k] .* V[1:(N - 1), j])
+                consistency_constraint && (daij_dsigmak[N, j, k] = -sum(dsigmatildel_dsigmak[:, k] .* V[1:(N - 1), j]))
             end
         end
         sig_rho = sig.(rho)
@@ -211,7 +240,7 @@ end
             G[k] = 2 * dot(daij_dsigmak[:, :, k], A)
         end
         for k in axes(daij_drhok, 3)
-            G[L - N + 1 + k] = 2 * dot(daij_drhok[:, :, k], A)
+            G[n_variables_sigma + k] = 2 * dot(daij_drhok[:, :, k], A)
         end
     end
     if !isnothing(F)

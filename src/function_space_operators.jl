@@ -37,7 +37,7 @@ end
 """
     function_space_operator(basis_functions, nodes, source;
                             derivative_order = 1, accuracy_order = 0,
-                            opt_alg = LBFGS(),
+                            consistency_constraint = true, opt_alg = LBFGS(),
                             options = Optim.Options(g_tol = 1e-14, iterations = 10000),
                             verbose = false)
 
