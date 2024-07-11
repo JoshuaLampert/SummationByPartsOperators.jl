@@ -157,7 +157,7 @@ function construct_function_space_operator(basis_functions, nodes,
     dsigmatildel_dsigmak = zeros(Int8, N - 1, L - N + 1) # This is only needed if consistency_constraint is true
     p = (V, V_x, R, x_length, S, A, SV, PV_x, daij_dsigmak, daij_drhok, dsigmatildel_dsigmak, consistency_constraint)
 
-    x0 = rand(n_variables_sigma + N)
+    x0 = zeros(n_variables_sigma + N)
     fg!(F, G, x) = optimization_function_and_grad!(F, G, x, p)
     result = optimize(Optim.only_fg!(fg!), x0, opt_alg, options)
     verbose && display(result)
