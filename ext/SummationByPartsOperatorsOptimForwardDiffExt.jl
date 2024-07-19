@@ -6,18 +6,22 @@ using ForwardDiff: ForwardDiff
 using SummationByPartsOperators: SummationByPartsOperators, GlaubitzNordströmÖffner2023, MatrixDerivativeOperator
 using LinearAlgebra: Diagonal, LowerTriangular, dot, diag, norm, mul!
 using SparseArrays: spzeros
+using PreallocationTools: DiffCache, get_tmp
 
 function SummationByPartsOperators.function_space_operator(basis_functions, nodes::Vector{T},
                                                            source::SourceOfCoefficients;
-                                                           derivative_order = 1, accuracy_order = 0,
+                                                           derivative_order = 1, accuracy_order = 0, bandwidth = length(nodes) - 1,
                                                            opt_alg = LBFGS(), options = Options(g_tol = 1e-14, iterations = 10000),
                                                            verbose = false) where {T, SourceOfCoefficients}
 
     if derivative_order != 1
         throw(ArgumentError("Derivative order $derivative_order not implemented."))
     end
+    if bandwidth > length(nodes) - 1 || bandwidth < 1
+        throw(ArgumentError("Bandwidth $bandwidth not in the range 1 to $(length(nodes) - 1)."))
+    end
     sort!(nodes)
-    weights, D = construct_function_space_operator(basis_functions, nodes, source; opt_alg = opt_alg, options = options, verbose = verbose)
+    weights, D = construct_function_space_operator(basis_functions, nodes, source; bandwidth = bandwidth, opt_alg = opt_alg, options = options, verbose = verbose)
     return MatrixDerivativeOperator(first(nodes), last(nodes), nodes, weights, D, accuracy_order, source)
 end
 
@@ -71,19 +75,24 @@ function vandermonde_matrix(functions, nodes)
     return V
 end
 
-function create_S(sigma, N)
+function create_S(sigma, N, bandwidth)
     S = zeros(eltype(sigma), N, N)
-    set_S!(S, sigma, N)
+    set_S!(S, sigma, N, bandwidth)
     return S
 end
 
-function set_S!(S, sigma, N)
+function set_S!(S, sigma, N, bandwidth)
     k = 1
     for i in 1:N
         for j in (i + 1):N
+            if abs(j - i) <= bandwidth
             S[i, j] = sigma[k]
             S[j, i] = -sigma[k]
             k += 1
+            else
+                S[i, j] = zero(eltype(sigma))
+                S[j, i] = zero(eltype(sigma))
+            end
         end
     end
 end
@@ -99,11 +108,14 @@ end
 
 function construct_function_space_operator(basis_functions, nodes,
                                            ::GlaubitzNordströmÖffner2023;
+                                           bandwidth = length(nodes) - 1,
                                            opt_alg = LBFGS(), options = Options(g_tol = 1e-14, iterations = 10000),
                                            verbose = false)
     K = length(basis_functions)
     N = length(nodes)
-    L = div(N * (N - 1), 2)
+    L = div(bandwidth * (2 * N - bandwidth - 1), 2) # <= div(N * (N - 1), 2) since bandwidth <= N - 1
+    @show L
+    @show div(N * (N - 1), 2)
     basis_functions_derivatives = [x -> ForwardDiff.derivative(basis_functions[i], x) for i in 1:K]
     basis_functions_orthonormalized, basis_functions_orthonormalized_derivatives = orthonormalize_gram_schmidt(basis_functions,
                                                                                                                basis_functions_derivatives,
@@ -123,24 +135,48 @@ function construct_function_space_operator(basis_functions, nodes,
     A = zeros(eltype(nodes), N, K)
     SV = zeros(eltype(nodes), N, K)
     PV_x = zeros(eltype(nodes), N, K)
+    S_cache = DiffCache(S)
+    A_cache = DiffCache(A)
+    SV_cache = DiffCache(SV)
+    PV_x_cache = DiffCache(PV_x)
     daij_dsigmak = zeros(eltype(nodes), N, K, L)
     daij_drhok = zeros(eltype(nodes), N, K, N)
-    p = (V, V_x, R, x_length, S, A, SV, PV_x, daij_dsigmak, daij_drhok)
+    p = (V, V_x, R, x_length, S_cache, A_cache, SV_cache, PV_x_cache, bandwidth, daij_dsigmak, daij_drhok)
 
     x0 = zeros(L + N)
-    fg!(F, G, x) = optimization_function_and_grad!(F, G, x, p)
-    result = optimize(Optim.only_fg!(fg!), x0, opt_alg, options)
+    # fg!(F, G, x) = optimization_function_and_grad!(F, G, x, p)
+    # result = optimize(Optim.only_fg!(fg!), x0, opt_alg, options)
+    f(x) = optimization_function(x, p)
+    result = optimize(f, x0, opt_alg, options, autodiff = :forward)
     verbose && display(result)
 
     x = minimizer(result)
     sigma = x[1:L]
     rho = x[(L + 1):end]
-    S = create_S(sigma, N)
+    S = create_S(sigma, N, bandwidth)
     P = create_P(rho, x_length)
     weights = diag(P)
     Q = S + B/2
     D = inv(P) * Q
     return weights, D
+end
+
+@views function optimization_function(x, p)
+    V, V_x, R, x_length, S_cache, A_cache, SV_cache, PV_x_cache, bandwidth = p
+    S = get_tmp(S_cache, x)
+    A = get_tmp(A_cache, x)
+    SV = get_tmp(SV_cache, x)
+    PV_x = get_tmp(PV_x_cache, x)
+    (N, _) = size(R)
+    L = div(bandwidth * (2 * N - bandwidth - 1), 2) # <= div(N * (N - 1), 2)
+    sigma = x[1:L]
+    rho = x[(L + 1):end]
+    set_S!(S, sigma, N, bandwidth)
+    P = create_P(rho, x_length)
+    mul!(SV, S, V)
+    mul!(PV_x, P, V_x)
+    @. A = SV - PV_x + R
+    return norm(A)^2
 end
 
 @views function optimization_function_and_grad!(F, G, x, p)

@@ -36,7 +36,7 @@ end
 # This function is extended in the package extension SummationByPartsOperatorsOptimExt
 """
     function_space_operator(basis_functions, nodes, source;
-                            derivative_order = 1, accuracy_order = 0,
+                            derivative_order = 1, accuracy_order = 0, bandwidth = length(nodes) - 1,
                             opt_alg = Optim.LBFGS(), options = Optim.Options(g_tol = 1e-14, iterations = 10000),
                             verbose = false)
 
@@ -48,7 +48,9 @@ interval `[x_min, x_max]` with the nodes `nodes`, where `x_min` is taken as the 
 but does not have any effect on the operator. The operator is constructed solving an optimization
 problem with Optim.jl. You can specify the optimization algorithm and options for the optimization problem
 with the keyword arguments `opt_alg` and `options` respectively, see also the
-[documentation of Optim.jl](https://julianlsolvers.github.io/Optim.jl/stable/user/config/)
+[documentation of Optim.jl](https://julianlsolvers.github.io/Optim.jl/stable/user/config/). The keyword
+argument `bandwidth` specifies the bandwidth of the operator, which is by default set to `length(nodes) - 1`,
+i.e., a dense operator.
 
 The operator that is returned follows the general interface. Currently, it is wrapped in a
 [`MatrixDerivativeOperator`](@ref), but this might change in the future.
