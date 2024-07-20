@@ -85,10 +85,10 @@ function set_S!(S, sigma, N, bandwidth)
     k = 1
     for i in 1:N
         for j in (i + 1):N
-            if abs(j - i) <= bandwidth
-            S[i, j] = sigma[k]
-            S[j, i] = -sigma[k]
-            k += 1
+            if j - i <= bandwidth
+                S[i, j] = sigma[j - i]
+                S[j, i] = -sigma[j - i]
+                k += 1
             else
                 S[i, j] = zero(eltype(sigma))
                 S[j, i] = zero(eltype(sigma))
@@ -113,7 +113,8 @@ function construct_function_space_operator(basis_functions, nodes,
                                            verbose = false)
     K = length(basis_functions)
     N = length(nodes)
-    L = div(bandwidth * (2 * N - bandwidth - 1), 2) # <= div(N * (N - 1), 2) since bandwidth <= N - 1
+    # L = div(bandwidth * (2 * N - bandwidth - 1), 2) # <= div(N * (N - 1), 2) since bandwidth <= N - 1
+    L = bandwidth
     @show L
     @show div(N * (N - 1), 2)
     basis_functions_derivatives = [x -> ForwardDiff.derivative(basis_functions[i], x) for i in 1:K]
@@ -168,7 +169,8 @@ end
     SV = get_tmp(SV_cache, x)
     PV_x = get_tmp(PV_x_cache, x)
     (N, _) = size(R)
-    L = div(bandwidth * (2 * N - bandwidth - 1), 2) # <= div(N * (N - 1), 2)
+    # L = div(bandwidth * (2 * N - bandwidth - 1), 2) # <= div(N * (N - 1), 2)
+    L = bandwidth
     sigma = x[1:L]
     rho = x[(L + 1):end]
     set_S!(S, sigma, N, bandwidth)
