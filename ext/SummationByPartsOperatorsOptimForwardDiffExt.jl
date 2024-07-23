@@ -81,18 +81,45 @@ function create_S(sigma, N, bandwidth)
     return S
 end
 
+# function set_S!(S, sigma, N, bandwidth)
+#     k = 1
+#     for i in 1:N
+#         for j in (i + 1):N
+#             if j - i <= bandwidth
+#                 S[i, j] = sigma[j - i]
+#                 S[j, i] = -sigma[j - i]
+#                 k += 1
+#             else
+#                 S[i, j] = zero(eltype(sigma))
+#                 S[j, i] = zero(eltype(sigma))
+#             end
+#         end
+#     end
+# end
+
 function set_S!(S, sigma, N, bandwidth)
-    k = 1
+    S[1, 2] = sigma[1]
+    S[1, 3] = sigma[2]
+    S[1, 4] = sigma[3]
+    S[2, 3] = sigma[4]
+    S[2, 4] = sigma[5]
+    S[3, 4] = sigma[6]
+    S[3, 5] = sigma[7]
+    S[4, 5] = sigma[8]
+    S[4, 6] = sigma[7]
+    S[5, 6] = sigma[8]
+    S[5, 7] = sigma[7]
+    S[6, 7] = sigma[8]
+    S[6, 8] = sigma[7]
+    S[7, 8] = sigma[6]
+    S[7, 9] = sigma[5]
+    S[7, 10] = sigma[3]
+    S[8, 9] = sigma[4]
+    S[8, 10] = sigma[2]
+    S[9, 10] = sigma[1]
     for i in 1:N
-        for j in (i + 1):N
-            if j - i <= bandwidth
-                S[i, j] = sigma[j - i]
-                S[j, i] = -sigma[j - i]
-                k += 1
-            else
-                S[i, j] = zero(eltype(sigma))
-                S[j, i] = zero(eltype(sigma))
-            end
+        for j in 1:(i - 1)
+            S[i, j] = -S[j, i]
         end
     end
 end
@@ -114,7 +141,7 @@ function construct_function_space_operator(basis_functions, nodes,
     K = length(basis_functions)
     N = length(nodes)
     # L = div(bandwidth * (2 * N - bandwidth - 1), 2) # <= div(N * (N - 1), 2) since bandwidth <= N - 1
-    L = bandwidth
+    L = 8
     @show L
     @show div(N * (N - 1), 2)
     basis_functions_derivatives = [x -> ForwardDiff.derivative(basis_functions[i], x) for i in 1:K]
@@ -170,7 +197,7 @@ end
     PV_x = get_tmp(PV_x_cache, x)
     (N, _) = size(R)
     # L = div(bandwidth * (2 * N - bandwidth - 1), 2) # <= div(N * (N - 1), 2)
-    L = bandwidth
+    L = 8
     sigma = x[1:L]
     rho = x[(L + 1):end]
     set_S!(S, sigma, N, bandwidth)
