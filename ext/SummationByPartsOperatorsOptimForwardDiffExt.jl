@@ -97,31 +97,71 @@ end
 #     end
 # end
 
-function set_S!(S, sigma, N, bandwidth)
-    S[1, 2] = sigma[1]
-    S[1, 3] = sigma[2]
-    S[1, 4] = sigma[3]
-    S[2, 3] = sigma[4]
-    S[2, 4] = sigma[5]
-    S[3, 4] = sigma[6]
-    S[3, 5] = sigma[7]
-    S[4, 5] = sigma[8]
-    S[4, 6] = sigma[7]
-    S[5, 6] = sigma[8]
-    S[5, 7] = sigma[7]
-    S[6, 7] = sigma[8]
-    S[6, 8] = sigma[7]
-    S[7, 8] = sigma[6]
-    S[7, 9] = sigma[5]
-    S[7, 10] = sigma[3]
-    S[8, 9] = sigma[4]
-    S[8, 10] = sigma[2]
-    S[9, 10] = sigma[1]
-    for i in 1:N
-        for j in 1:(i - 1)
-            S[i, j] = -S[j, i]
+# function set_S!(S, sigma, N, bandwidth)
+#     S[1, 2] = sigma[1]
+#     S[1, 3] = sigma[2]
+#     S[1, 4] = sigma[3]
+#     S[2, 3] = sigma[4]
+#     S[2, 4] = sigma[5]
+#     S[3, 4] = sigma[6]
+#     S[3, 5] = sigma[7]
+#     S[4, 5] = sigma[8]
+#     S[4, 6] = sigma[7]
+#     S[5, 6] = sigma[8]
+#     S[5, 7] = sigma[7]
+#     S[6, 7] = sigma[8]
+#     S[6, 8] = sigma[7]
+#     S[7, 8] = sigma[6]
+#     S[7, 9] = sigma[5]
+#     S[7, 10] = sigma[3]
+#     S[8, 9] = sigma[4]
+#     S[8, 10] = sigma[2]
+#     S[9, 10] = sigma[1]
+#     for i in 1:N
+#         for j in 1:(i - 1)
+#             S[i, j] = -S[j, i]
+#         end
+#     end
+# end
+
+permute_rows_and_cols(P) = P[size(P, 1):-1:1, size(P, 2):-1:1]
+
+@views function set_S!(S, sigma, N, bandwidth)
+    b = bandwidth
+    M = S[1:(2 * b), 1:(2 * b)]
+    k = 1
+    for i in 1:(2 * b)
+        for j in (i + 1):(2 * b)
+            M[i, j] = sigma[k]
+            M[j, i] = -sigma[k]
+            k += 1
         end
     end
+    M_bar = permute_rows_and_cols(M)
+    S[(N - 2 * b + 1):N, (N - 2 * b + 1):N] = -M_bar
+
+    D = S[(2 * b + 1):(N - 2 * b), (2 * b + 1):(N - 2 * b)]
+    L = 2 * b^2
+    for i in 1:(N - 4 * b)
+        for j in (i + 1):(N - 4 * b)
+            if j - i <= bandwidth
+                D[i, j] = sigma[L + i - j + 1]
+                D[j, i] = -sigma[L + i - j + 1]
+            end
+        end
+    end
+
+    C = S[1:(2 * b), (2 * b + 1):(N - 2 * b)]
+    l = b * (2 * b - 1)
+    for i in (b + 1):(2 * b)
+        for j in 1:(i - b)
+            C[i, j] = sigma[l + 1 + i - b - j]
+        end
+    end
+    S[(2 * b + 1):(N - 2 * b), 1:(2 * b)] = -C'
+    C_bar = permute_rows_and_cols(C)
+    S[(2 * b + 1):(N - 2 * b), (N - 2 * b + 1):N] = C_bar'
+    S[(N - 2 * b + 1):N, (2 * b + 1):(N - 2 * b)] = -C_bar
 end
 
 sig(x) = 1 / (1 + exp(-x))
@@ -141,7 +181,7 @@ function construct_function_space_operator(basis_functions, nodes,
     K = length(basis_functions)
     N = length(nodes)
     # L = div(bandwidth * (2 * N - bandwidth - 1), 2) # <= div(N * (N - 1), 2) since bandwidth <= N - 1
-    L = 8
+    L = 2 * bandwidth^2
     @show L
     @show div(N * (N - 1), 2)
     basis_functions_derivatives = [x -> ForwardDiff.derivative(basis_functions[i], x) for i in 1:K]
@@ -197,7 +237,7 @@ end
     PV_x = get_tmp(PV_x_cache, x)
     (N, _) = size(R)
     # L = div(bandwidth * (2 * N - bandwidth - 1), 2) # <= div(N * (N - 1), 2)
-    L = 8
+    L = 2 * bandwidth^2
     sigma = x[1:L]
     rho = x[(L + 1):end]
     set_S!(S, sigma, N, bandwidth)
