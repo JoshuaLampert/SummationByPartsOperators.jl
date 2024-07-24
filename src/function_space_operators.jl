@@ -50,7 +50,10 @@ problem with Optim.jl. You can specify the optimization algorithm and options fo
 with the keyword arguments `opt_alg` and `options` respectively, see also the
 [documentation of Optim.jl](https://julianlsolvers.github.io/Optim.jl/stable/user/config/). The keyword
 argument `bandwidth` specifies the bandwidth of the operator, which is by default set to `length(nodes) - 1`,
-i.e., a dense operator.
+i.e., a dense operator. To construct a sparse operator, you can set the bandwidth to a smaller value, such
+that `4 * basis_functions < length(nodes)`, which is a requirement for the boundary blocks in the upper left
+and lower right of the resulting operator. The keyword argument `verbose` can be set to `true` to print
+information about the optimization process.
 
 The operator that is returned follows the general interface. Currently, it is wrapped in a
 [`MatrixDerivativeOperator`](@ref), but this might change in the future.
