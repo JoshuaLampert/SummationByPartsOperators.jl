@@ -123,17 +123,17 @@ permute_rows_and_cols(P) = P[size(P, 1):-1:1, size(P, 2):-1:1]
         end
 
         # The different Cs overlap partially to also work for the edge case of N = 4 * b + 1
-        C = S[1:(2 * b), (2 * b + 1):(N - 2 * b + 1)]
+        C = S[1:(2 * b), (2 * b + 1):(N - b - 1)]
         l = b * (2 * b - 1)
         for i in (b + 1):(2 * b)
             for j in 1:(i - b)
                 C[i, j] = sigma[l + 1 + i - b - j]
             end
         end
-        S[(2 * b + 1):(N - 2 * b + 1), 1:(2 * b)] = -C'
+        S[(2 * b + 1):(N - b - 1), 1:(2 * b)] = -C'
         C_bar = permute_rows_and_cols(C)
-        S[(2 * b):(N - 2 * b), (N - 2 * b + 1):N] = C_bar'
-        S[(N - 2 * b + 1):N, (2 * b):(N - 2 * b)] = -C_bar
+        S[(b + 2):(N - 2 * b), (N - 2 * b + 1):N] = C_bar'
+        S[(N - 2 * b + 1):N, (b + 2):(N - 2 * b)] = -C_bar
     end
 end
 
