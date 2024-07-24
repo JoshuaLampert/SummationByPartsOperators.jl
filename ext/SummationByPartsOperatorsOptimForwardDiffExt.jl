@@ -17,7 +17,7 @@ function SummationByPartsOperators.function_space_operator(basis_functions, node
     if derivative_order != 1
         throw(ArgumentError("Derivative order $derivative_order not implemented."))
     end
-    if (length(nodes) <= 4 * bandwidth || bandwidth < 1)
+    if (length(nodes) <= 4 * bandwidth || bandwidth < 1) && (bandwidth != length(nodes) - 1)
         throw(ArgumentError("4 * bandwidth = $(4 * bandwidth) needs to be smaller than N = $(length(nodes)) and bandwidth = $bandwidth needs to be at least 1."))
     end
     sort!(nodes)
@@ -81,61 +81,60 @@ function create_S(sigma, N, bandwidth)
     return S
 end
 
-# function set_S!(S, sigma, N, bandwidth)
-#     k = 1
-#     for i in 1:N
-#         for j in (i + 1):N
-#             if j - i <= bandwidth
-#                 S[i, j] = sigma[j - i]
-#                 S[j, i] = -sigma[j - i]
-#                 k += 1
-#             else
-#                 S[i, j] = zero(eltype(sigma))
-#                 S[j, i] = zero(eltype(sigma))
-#             end
-#         end
-#     end
-# end
+function set_S!(S, sigma, N)
+    k = 1
+    for i in 1:N
+        for j in (i + 1):N
+            S[i, j] = sigma[k]
+            S[j, i] = -sigma[k]
+            k += 1
+        end
+    end
+end
 
 permute_rows_and_cols(P) = P[size(P, 1):-1:1, size(P, 2):-1:1]
 
 @views function set_S!(S, sigma, N, bandwidth)
-    b = bandwidth
-    M = S[1:(2 * b), 1:(2 * b)]
-    k = 1
-    for i in 1:(2 * b)
-        for j in (i + 1):(2 * b)
-            M[i, j] = sigma[k]
-            M[j, i] = -sigma[k]
-            k += 1
-        end
-    end
-    M_bar = permute_rows_and_cols(M)
-    S[(N - 2 * b + 1):N, (N - 2 * b + 1):N] = -M_bar
-
-    D = S[(2 * b + 1):(N - 2 * b), (2 * b + 1):(N - 2 * b)]
-    L = 2 * b^2
-    for i in 1:(N - 4 * b)
-        for j in (i + 1):(N - 4 * b)
-            if j - i <= bandwidth
-                D[i, j] = sigma[L + i - j + 1]
-                D[j, i] = -sigma[L + i - j + 1]
+    if bandwidth == N - 1
+        set_S!(S, sigma, N)
+    else
+        b = bandwidth
+        M = S[1:(2 * b), 1:(2 * b)]
+        k = 1
+        for i in 1:(2 * b)
+            for j in (i + 1):(2 * b)
+                M[i, j] = sigma[k]
+                M[j, i] = -sigma[k]
+                k += 1
             end
         end
-    end
+        M_bar = permute_rows_and_cols(M)
+        S[(N - 2 * b + 1):N, (N - 2 * b + 1):N] = -M_bar
 
-    # The different Cs overlap partially to also work for the edge case of N = 4 * b + 1
-    C = S[1:(2 * b), (2 * b + 1):(N - 2 * b + 1)]
-    l = b * (2 * b - 1)
-    for i in (b + 1):(2 * b)
-        for j in 1:(i - b)
-            C[i, j] = sigma[l + 1 + i - b - j]
+        D = S[(2 * b + 1):(N - 2 * b), (2 * b + 1):(N - 2 * b)]
+        L = 2 * b^2
+        for i in 1:(N - 4 * b)
+            for j in (i + 1):(N - 4 * b)
+                if j - i <= bandwidth
+                    D[i, j] = sigma[L + i - j + 1]
+                    D[j, i] = -sigma[L + i - j + 1]
+                end
+            end
         end
+
+        # The different Cs overlap partially to also work for the edge case of N = 4 * b + 1
+        C = S[1:(2 * b), (2 * b + 1):(N - 2 * b + 1)]
+        l = b * (2 * b - 1)
+        for i in (b + 1):(2 * b)
+            for j in 1:(i - b)
+                C[i, j] = sigma[l + 1 + i - b - j]
+            end
+        end
+        S[(2 * b + 1):(N - 2 * b + 1), 1:(2 * b)] = -C'
+        C_bar = permute_rows_and_cols(C)
+        S[(2 * b):(N - 2 * b), (N - 2 * b + 1):N] = C_bar'
+        S[(N - 2 * b + 1):N, (2 * b):(N - 2 * b)] = -C_bar
     end
-    S[(2 * b + 1):(N - 2 * b + 1), 1:(2 * b)] = -C'
-    C_bar = permute_rows_and_cols(C)
-    S[(2 * b):(N - 2 * b), (N - 2 * b + 1):N] = C_bar'
-    S[(N - 2 * b + 1):N, (2 * b):(N - 2 * b)] = -C_bar
 end
 
 sig(x) = 1 / (1 + exp(-x))
@@ -147,6 +146,17 @@ function create_P(rho, x_length)
     return P
 end
 
+function get_nsigma(N, bandwidth)
+    if bandwidth == N - 1
+        # whole upper right corner
+        return div(N * (N - 1), 2)
+    else
+        # upper right corner for boundary blocks (2b*(2b - 1)/2 = b*(2b - 1)) plus b from repeating stencil
+        # => b*(2b - 1) + b = 2b^2
+        return 2 * bandwidth^2
+    end
+end
+
 function construct_function_space_operator(basis_functions, nodes,
                                            ::GlaubitzNordströmÖffner2023;
                                            bandwidth = length(nodes) - 1,
@@ -154,8 +164,7 @@ function construct_function_space_operator(basis_functions, nodes,
                                            verbose = false)
     K = length(basis_functions)
     N = length(nodes)
-    # L = div(bandwidth * (2 * N - bandwidth - 1), 2) # <= div(N * (N - 1), 2) since bandwidth <= N - 1
-    L = 2 * bandwidth^2
+    L = get_nsigma(N, bandwidth)
     @show L
     @show div(N * (N - 1), 2)
     basis_functions_derivatives = [x -> ForwardDiff.derivative(basis_functions[i], x) for i in 1:K]
@@ -186,10 +195,14 @@ function construct_function_space_operator(basis_functions, nodes,
     p = (V, V_x, R, x_length, S_cache, A_cache, SV_cache, PV_x_cache, bandwidth, daij_dsigmak, daij_drhok)
 
     x0 = zeros(L + N)
-    # fg!(F, G, x) = optimization_function_and_grad!(F, G, x, p)
-    # result = optimize(Optim.only_fg!(fg!), x0, opt_alg, options)
-    f(x) = optimization_function(x, p)
-    result = optimize(f, x0, opt_alg, options, autodiff = :forward)
+
+    if bandwidth == N - 1
+        fg!(F, G, x) = optimization_function_and_grad!(F, G, x, p)
+        result = optimize(Optim.only_fg!(fg!), x0, opt_alg, options)
+    else
+        f(x) = optimization_function(x, p)
+        result = optimize(f, x0, opt_alg, options, autodiff = :forward)
+    end
     verbose && display(result)
 
     x = minimizer(result)
@@ -210,8 +223,7 @@ end
     SV = get_tmp(SV_cache, x)
     PV_x = get_tmp(PV_x_cache, x)
     (N, _) = size(R)
-    # L = div(bandwidth * (2 * N - bandwidth - 1), 2) # <= div(N * (N - 1), 2)
-    L = 2 * bandwidth^2
+    L = get_nsigma(N, bandwidth)
     sigma = x[1:L]
     rho = x[(L + 1):end]
     set_S!(S, sigma, N, bandwidth)
@@ -223,7 +235,11 @@ end
 end
 
 @views function optimization_function_and_grad!(F, G, x, p)
-    V, V_x, R, x_length, S, A, SV, PV_x, daij_dsigmak, daij_drhok = p
+    V, V_x, R, x_length, S_cache, A_cache, SV_cache, PV_x_cache, _, daij_dsigmak, daij_drhok = p
+    S = get_tmp(S_cache, x)
+    A = get_tmp(A_cache, x)
+    SV = get_tmp(SV_cache, x)
+    PV_x = get_tmp(PV_x_cache, x)
     (N, _) = size(R)
     L = div(N * (N - 1), 2)
     sigma = x[1:L]
