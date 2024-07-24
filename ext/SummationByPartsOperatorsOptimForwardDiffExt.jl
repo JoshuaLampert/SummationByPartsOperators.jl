@@ -17,8 +17,8 @@ function SummationByPartsOperators.function_space_operator(basis_functions, node
     if derivative_order != 1
         throw(ArgumentError("Derivative order $derivative_order not implemented."))
     end
-    if bandwidth > length(nodes) - 1 || bandwidth < 1
-        throw(ArgumentError("Bandwidth $bandwidth not in the range 1 to $(length(nodes) - 1)."))
+    if (length(nodes) <= 4 * bandwidth || bandwidth < 1)
+        throw(ArgumentError("4 * bandwidth = $(4 * bandwidth) needs to be smaller than N = $(length(nodes)) and bandwidth = $bandwidth needs to be at least 1."))
     end
     sort!(nodes)
     weights, D = construct_function_space_operator(basis_functions, nodes, source; bandwidth = bandwidth, opt_alg = opt_alg, options = options, verbose = verbose)
@@ -97,33 +97,6 @@ end
 #     end
 # end
 
-# function set_S!(S, sigma, N, bandwidth)
-#     S[1, 2] = sigma[1]
-#     S[1, 3] = sigma[2]
-#     S[1, 4] = sigma[3]
-#     S[2, 3] = sigma[4]
-#     S[2, 4] = sigma[5]
-#     S[3, 4] = sigma[6]
-#     S[3, 5] = sigma[7]
-#     S[4, 5] = sigma[8]
-#     S[4, 6] = sigma[7]
-#     S[5, 6] = sigma[8]
-#     S[5, 7] = sigma[7]
-#     S[6, 7] = sigma[8]
-#     S[6, 8] = sigma[7]
-#     S[7, 8] = sigma[6]
-#     S[7, 9] = sigma[5]
-#     S[7, 10] = sigma[3]
-#     S[8, 9] = sigma[4]
-#     S[8, 10] = sigma[2]
-#     S[9, 10] = sigma[1]
-#     for i in 1:N
-#         for j in 1:(i - 1)
-#             S[i, j] = -S[j, i]
-#         end
-#     end
-# end
-
 permute_rows_and_cols(P) = P[size(P, 1):-1:1, size(P, 2):-1:1]
 
 @views function set_S!(S, sigma, N, bandwidth)
@@ -151,17 +124,18 @@ permute_rows_and_cols(P) = P[size(P, 1):-1:1, size(P, 2):-1:1]
         end
     end
 
-    C = S[1:(2 * b), (2 * b + 1):(N - 2 * b)]
+    # The different Cs overlap partially to also work for the edge case of N = 4 * b + 1
+    C = S[1:(2 * b), (2 * b + 1):(N - 2 * b + 1)]
     l = b * (2 * b - 1)
     for i in (b + 1):(2 * b)
         for j in 1:(i - b)
             C[i, j] = sigma[l + 1 + i - b - j]
         end
     end
-    S[(2 * b + 1):(N - 2 * b), 1:(2 * b)] = -C'
+    S[(2 * b + 1):(N - 2 * b + 1), 1:(2 * b)] = -C'
     C_bar = permute_rows_and_cols(C)
-    S[(2 * b + 1):(N - 2 * b), (N - 2 * b + 1):N] = C_bar'
-    S[(N - 2 * b + 1):N, (2 * b + 1):(N - 2 * b)] = -C_bar
+    S[(2 * b):(N - 2 * b), (N - 2 * b + 1):N] = C_bar'
+    S[(N - 2 * b + 1):N, (2 * b):(N - 2 * b)] = -C_bar
 end
 
 sig(x) = 1 / (1 + exp(-x))
