@@ -17,8 +17,8 @@ function SummationByPartsOperators.function_space_operator(basis_functions, node
     if derivative_order != 1
         throw(ArgumentError("Derivative order $derivative_order not implemented."))
     end
-    if (length(nodes) <= 4 * bandwidth || bandwidth < 1) && (bandwidth != length(nodes) - 1)
-        throw(ArgumentError("4 * bandwidth = $(4 * bandwidth) needs to be smaller than N = $(length(nodes)) and bandwidth = $bandwidth needs to be at least 1."))
+    if (length(nodes) < 5 * bandwidth || bandwidth < 1) && (bandwidth != length(nodes) - 1)
+        throw(ArgumentError("5 * bandwidth = $(5 * bandwidth) needs to be smaller than or equal to N = $(length(nodes)) and bandwidth = $bandwidth needs to be at least 1."))
     end
     sort!(nodes)
     weights, D = construct_function_space_operator(basis_functions, nodes, source; bandwidth = bandwidth, opt_alg = opt_alg, options = options, verbose = verbose)
@@ -92,48 +92,58 @@ function set_S!(S, sigma, N)
     end
 end
 
-permute_rows_and_cols(P) = P[size(P, 1):-1:1, size(P, 2):-1:1]
+# permute_rows_and_cols(P) = P[size(P, 1):-1:1, size(P, 2):-1:1]
 
 @views function set_S!(S, sigma, N, bandwidth)
     if bandwidth == N - 1
         set_S!(S, sigma, N)
     else
         b = bandwidth
-        M = S[1:(2 * b), 1:(2 * b)]
+        M1 = S[1:(2 * b), 1:(2 * b)]
         k = 1
         for i in 1:(2 * b)
             for j in (i + 1):(2 * b)
-                M[i, j] = sigma[k]
-                M[j, i] = -sigma[k]
+                M1[i, j] = sigma[k]
+                M1[j, i] = -sigma[k]
                 k += 1
             end
         end
-        M_bar = permute_rows_and_cols(M)
-        S[(N - 2 * b + 1):N, (N - 2 * b + 1):N] = -M_bar
+        M2 = S[(N - 2 * b + 1):N, (N - 2 * b + 1):N]
+        for i in 1:(2 * b)
+            for j in (i + 1):(2 * b)
+                M2[i, j] = sigma[k]
+                M2[j, i] = -sigma[k]
+                k += 1
+            end
+        end
 
         D = S[(2 * b + 1):(N - 2 * b), (2 * b + 1):(N - 2 * b)]
-        L = 2 * b^2
         for i in 1:(N - 4 * b)
             for j in (i + 1):(N - 4 * b)
                 if j - i <= bandwidth
-                    D[i, j] = sigma[L + i - j + 1]
-                    D[j, i] = -sigma[L + i - j + 1]
+                    D[i, j] = sigma[k]
+                    D[j, i] = -sigma[k]
+                    k += 1
                 end
             end
         end
 
-        # The different Cs overlap partially to also work for the edge case of N = 4 * b + 1
-        C = S[1:(2 * b), (2 * b + 1):(N - b - 1)]
-        l = b * (2 * b - 1)
+        C1 = S[1:(2 * b), (2 * b + 1):(N - 2 * b)]
         for i in (b + 1):(2 * b)
             for j in 1:(i - b)
-                C[i, j] = sigma[l + 1 + i - b - j]
+                C1[i, j] = sigma[k]
+                k += 1
             end
         end
-        S[(2 * b + 1):(N - b - 1), 1:(2 * b)] = -C'
-        C_bar = permute_rows_and_cols(C)
-        S[(b + 2):(N - 2 * b), (N - 2 * b + 1):N] = C_bar'
-        S[(N - 2 * b + 1):N, (b + 2):(N - 2 * b)] = -C_bar
+        S[(2 * b + 1):(N - 2 * b), 1:(2 * b)] = -C1'
+        C2 = S[(2 * b + 1):(N - 2 * b), (N - 2 * b + 1):N]
+        for i in (N - 5 * b + 1):(N - 4 * b)
+            for j in 1:(i - (N - 5 * b))
+                C2[i, j] = sigma[k]
+                k += 1
+            end
+        end
+        S[(N - 2 * b + 1):N, (2 * b + 1):(N - 2 * b)] = -C2'
     end
 end
 
@@ -148,12 +158,10 @@ end
 
 function get_nsigma(N, bandwidth)
     if bandwidth == N - 1
-        # whole upper right corner
+        # whole upper right triangle
         return div(N * (N - 1), 2)
     else
-        # upper right corner for boundary blocks (2b*(2b - 1)/2 = b*(2b - 1)) plus b from repeating stencil
-        # => b*(2b - 1) + b = 2b^2
-        return 2 * bandwidth^2
+        return N * bandwidth + div(bandwidth * (bandwidth - 3), 2)
     end
 end
 
