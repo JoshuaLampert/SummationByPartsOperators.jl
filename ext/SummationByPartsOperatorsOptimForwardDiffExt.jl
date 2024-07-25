@@ -94,55 +94,74 @@ end
 
 # permute_rows_and_cols(P) = P[size(P, 1):-1:1, size(P, 2):-1:1]
 
+# M has to be square
+function set_skew_symmetric!(M, sigma, init_k = 1)
+    N = size(M, 1)
+    k = init_k
+    for i in 1:N
+        for j in (i + 1):N
+            M[i, j] = sigma[k]
+            M[j, i] = -sigma[k]
+            k += 1
+        end
+    end
+    return k
+end
+
+# D has to be square
+function set_banded!(D, sigma, bandwidth, init_k = 1)
+    N = size(D, 1)
+    k = init_k
+    for i in 1:N
+        for j in (i + 1):N
+            if j - i <= bandwidth
+                D[i, j] = sigma[k]
+                D[j, i] = -sigma[k]
+                k += 1
+            end
+        end
+    end
+    return k
+end
+
+function set_triangular!(C, sigma, bandwidth, init_k = 1)
+    N = size(C, 1)
+    k = init_k
+    start_i = N - bandwidth + 1
+    for i in start_i:N
+        for j in 1:(i - start_i + 1)
+            C[i, j] = sigma[k]
+            k += 1
+        end
+    end
+    return k
+end
+
 @views function set_S!(S, sigma, N, bandwidth)
     if bandwidth == N - 1
         set_S!(S, sigma, N)
     else
         b = bandwidth
+        # upper left boundary block
         M1 = S[1:(2 * b), 1:(2 * b)]
-        k = 1
-        for i in 1:(2 * b)
-            for j in (i + 1):(2 * b)
-                M1[i, j] = sigma[k]
-                M1[j, i] = -sigma[k]
-                k += 1
-            end
-        end
+        k = set_skew_symmetric!(M1, sigma, 1)
+        # lower right boundary block
         M2 = S[(N - 2 * b + 1):N, (N - 2 * b + 1):N]
-        for i in 1:(2 * b)
-            for j in (i + 1):(2 * b)
-                M2[i, j] = sigma[k]
-                M2[j, i] = -sigma[k]
-                k += 1
-            end
-        end
+        k = set_skew_symmetric!(M2, sigma, k)
 
+        # banded matrix in the middle
         D = S[(2 * b + 1):(N - 2 * b), (2 * b + 1):(N - 2 * b)]
-        for i in 1:(N - 4 * b)
-            for j in (i + 1):(N - 4 * b)
-                if j - i <= bandwidth
-                    D[i, j] = sigma[k]
-                    D[j, i] = -sigma[k]
-                    k += 1
-                end
-            end
-        end
+        k = set_banded!(D, sigma, b, k)
 
+        # upper central block with triangular part
         C1 = S[1:(2 * b), (2 * b + 1):(N - 2 * b)]
-        for i in (b + 1):(2 * b)
-            for j in 1:(i - b)
-                C1[i, j] = sigma[k]
-                k += 1
-            end
-        end
+        k = set_triangular!(C1, sigma, b, k)
+        # central left block with triangular part
         S[(2 * b + 1):(N - 2 * b), 1:(2 * b)] = -C1'
+        # central right block with triangular part
         C2 = S[(2 * b + 1):(N - 2 * b), (N - 2 * b + 1):N]
-        for i in (N - 5 * b + 1):(N - 4 * b)
-            for j in 1:(i - (N - 5 * b))
-                C2[i, j] = sigma[k]
-                k += 1
-            end
-        end
+        k = set_triangular!(C2, sigma, b, k)
+        # lower central block with triangular part
         S[(N - 2 * b + 1):N, (2 * b + 1):(N - 2 * b)] = -C2'
     end
 end
