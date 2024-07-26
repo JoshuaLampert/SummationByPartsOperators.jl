@@ -75,24 +75,11 @@ function vandermonde_matrix(functions, nodes)
     return V
 end
 
-function create_S(sigma, N, bandwidth)
+function create_S(sigma, N, bandwidth, different_values)
     S = zeros(eltype(sigma), N, N)
-    set_S!(S, sigma, N, bandwidth)
+    set_S!(S, sigma, N, bandwidth, different_values)
     return S
 end
-
-function set_S!(S, sigma, N)
-    k = 1
-    for i in 1:N
-        for j in (i + 1):N
-            S[i, j] = sigma[k]
-            S[j, i] = -sigma[k]
-            k += 1
-        end
-    end
-end
-
-# permute_rows_and_cols(P) = P[size(P, 1):-1:1, size(P, 2):-1:1]
 
 # M has to be square
 function set_skew_symmetric!(M, sigma, init_k = 1)
@@ -109,14 +96,20 @@ function set_skew_symmetric!(M, sigma, init_k = 1)
 end
 
 # D has to be square
-function set_banded!(D, sigma, bandwidth, init_k = 1)
+function set_banded!(D, sigma, bandwidth, init_k = 1, different_values = true)
     N = size(D, 1)
     k = init_k
+    L = get_nsigma(N, bandwidth, different_values)
     for i in 1:N
         for j in (i + 1):N
             if j - i <= bandwidth
-                D[i, j] = sigma[k]
-                D[j, i] = -sigma[k]
+                if different_values
+                    l = k
+                else
+                    l = L + i - j + 1
+                end
+                D[i, j] = sigma[l]
+                D[j, i] = -sigma[l]
                 k += 1
             end
         end
@@ -124,22 +117,34 @@ function set_banded!(D, sigma, bandwidth, init_k = 1)
     return k
 end
 
-function set_triangular!(C, sigma, bandwidth, init_k = 1)
+function set_triangular!(C, sigma, bandwidth, init_k = 1, different_values = true)
     N = size(C, 1)
     k = init_k
-    start_i = N - bandwidth + 1
+    if different_values
+        start_i = N - bandwidth + 1
+    else
+        start_i = bandwidth + 1
+    end
+    L = get_nsigma(N, bandwidth, different_values) - bandwidth
     for i in start_i:N
         for j in 1:(i - start_i + 1)
-            C[i, j] = sigma[k]
+            if different_values
+                l = k
+            else
+                l = L + i - j + 2 - start_i
+            end
+            C[i, j] = sigma[l]
             k += 1
         end
     end
     return k
 end
 
-@views function set_S!(S, sigma, N, bandwidth)
+permute_rows_and_cols(P) = P[size(P, 1):-1:1, size(P, 2):-1:1]
+
+@views function set_S!(S, sigma, N, bandwidth, different_values = true)
     if bandwidth == N - 1
-        set_S!(S, sigma, N)
+        set_skew_symmetric!(S, sigma)
     else
         b = bandwidth
         # upper left boundary block
@@ -147,22 +152,32 @@ end
         k = set_skew_symmetric!(M1, sigma, 1)
         # lower right boundary block
         M2 = S[(N - 2 * b + 1):N, (N - 2 * b + 1):N]
-        k = set_skew_symmetric!(M2, sigma, k)
+        if different_values
+            k = set_skew_symmetric!(M2, sigma, k)
+        else
+            M2 .= -permute_rows_and_cols(M1)
+        end
 
         # banded matrix in the middle
         D = S[(2 * b + 1):(N - 2 * b), (2 * b + 1):(N - 2 * b)]
-        k = set_banded!(D, sigma, b, k)
+        k = set_banded!(D, sigma, b, k, different_values)
 
         # upper central block with triangular part
         C1 = S[1:(2 * b), (2 * b + 1):(N - 2 * b)]
-        k = set_triangular!(C1, sigma, b, k)
+        k = set_triangular!(C1, sigma, b, k, different_values)
         # central left block with triangular part
         S[(2 * b + 1):(N - 2 * b), 1:(2 * b)] = -C1'
         # central right block with triangular part
         C2 = S[(2 * b + 1):(N - 2 * b), (N - 2 * b + 1):N]
-        k = set_triangular!(C2, sigma, b, k)
-        # lower central block with triangular part
-        S[(N - 2 * b + 1):N, (2 * b + 1):(N - 2 * b)] = -C2'
+        if different_values
+            k = set_triangular!(C2, sigma, b, k, different_values)
+            # lower central block with triangular part
+            S[(N - 2 * b + 1):N, (2 * b + 1):(N - 2 * b)] = -C2'
+        else
+            C1_bar = permute_rows_and_cols(C1)
+            C2 .= C1_bar'
+            S[(N - 2 * b + 1):N, (2 * b + 1):(N - 2 * b)] = -C1_bar
+        end
     end
 end
 
@@ -175,12 +190,22 @@ function create_P(rho, x_length)
     return P
 end
 
-function get_nsigma(N, bandwidth)
+function get_nsigma(N, bandwidth, different_values = true)
     if bandwidth == N - 1
         # whole upper right triangle
         return div(N * (N - 1), 2)
     else
-        return N * bandwidth + div(bandwidth * (bandwidth - 3), 2)
+        if different_values
+            # upper right corner for boundary blocks (2b)x(2b) each: (2b*(2b - 1)/2 = b*(2b - 1))
+            # lower triangle including diagonal for two different upper and right central blocks bxb each: b*(b + 1)/2
+            # non-repeating stencil for diagonal block: (N - 5b)b + b*(b - 1)/2
+            # => in total: Nb + b(b - 3)/2
+            return N * bandwidth + div(bandwidth * (bandwidth - 3), 2)
+        else
+            # upper right corner for boundary blocks (2b)x(2b): (2b*(2b - 1)/2 = b*(2b - 1)) plus b from repeating stencil
+            # => in total: b*(2b - 1) + b = 2b^2
+            return 2 * bandwidth^2
+        end
     end
 end
 
@@ -191,7 +216,10 @@ function construct_function_space_operator(basis_functions, nodes,
                                            verbose = false)
     K = length(basis_functions)
     N = length(nodes)
-    L = get_nsigma(N, bandwidth)
+    # if true all the entries in S are different except for the skew-symmetric part (makes sense for non-equidistant nodes and general bases),
+    # if false the entries the stencil is repeated in the central part and the two boundary closures share their values
+    different_values = true
+    L = get_nsigma(N, bandwidth, different_values)
     @show L
     @show div(N * (N - 1), 2)
     basis_functions_derivatives = [x -> ForwardDiff.derivative(basis_functions[i], x) for i in 1:K]
@@ -219,7 +247,7 @@ function construct_function_space_operator(basis_functions, nodes,
     PV_x_cache = DiffCache(PV_x)
     daij_dsigmak = zeros(eltype(nodes), N, K, L)
     daij_drhok = zeros(eltype(nodes), N, K, N)
-    p = (V, V_x, R, x_length, S_cache, A_cache, SV_cache, PV_x_cache, bandwidth, daij_dsigmak, daij_drhok)
+    p = (V, V_x, R, x_length, S_cache, A_cache, SV_cache, PV_x_cache, bandwidth, different_values, daij_dsigmak, daij_drhok)
 
     x0 = zeros(L + N)
 
@@ -235,7 +263,7 @@ function construct_function_space_operator(basis_functions, nodes,
     x = minimizer(result)
     sigma = x[1:L]
     rho = x[(L + 1):end]
-    S = create_S(sigma, N, bandwidth)
+    S = create_S(sigma, N, bandwidth, different_values)
     P = create_P(rho, x_length)
     weights = diag(P)
     Q = S + B/2
@@ -244,16 +272,16 @@ function construct_function_space_operator(basis_functions, nodes,
 end
 
 @views function optimization_function(x, p)
-    V, V_x, R, x_length, S_cache, A_cache, SV_cache, PV_x_cache, bandwidth = p
+    V, V_x, R, x_length, S_cache, A_cache, SV_cache, PV_x_cache, bandwidth, different_values = p
     S = get_tmp(S_cache, x)
     A = get_tmp(A_cache, x)
     SV = get_tmp(SV_cache, x)
     PV_x = get_tmp(PV_x_cache, x)
     (N, _) = size(R)
-    L = get_nsigma(N, bandwidth)
+    L = get_nsigma(N, bandwidth, different_values)
     sigma = x[1:L]
     rho = x[(L + 1):end]
-    set_S!(S, sigma, N, bandwidth)
+    set_S!(S, sigma, N, bandwidth, different_values)
     P = create_P(rho, x_length)
     mul!(SV, S, V)
     mul!(PV_x, P, V_x)
@@ -262,7 +290,7 @@ end
 end
 
 @views function optimization_function_and_grad!(F, G, x, p)
-    V, V_x, R, x_length, S_cache, A_cache, SV_cache, PV_x_cache, _, daij_dsigmak, daij_drhok = p
+    V, V_x, R, x_length, S_cache, A_cache, SV_cache, PV_x_cache, bandwidth, _, daij_dsigmak, daij_drhok = p
     S = get_tmp(S_cache, x)
     A = get_tmp(A_cache, x)
     SV = get_tmp(SV_cache, x)
@@ -271,7 +299,7 @@ end
     L = div(N * (N - 1), 2)
     sigma = x[1:L]
     rho = x[(L + 1):end]
-    set_S!(S, sigma, N)
+    set_S!(S, sigma, N, bandwidth, false)
     P = create_P(rho, x_length)
     mul!(SV, S, V)
     mul!(PV_x, P, V_x)
