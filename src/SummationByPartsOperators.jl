@@ -123,6 +123,7 @@ include("SBP_coefficients/MattssonAlmquistVanDerWeide2018Minimal.jl")
 include("SBP_coefficients/MattssonAlmquistVanDerWeide2018Accurate.jl")
 include("SBP_coefficients/DienerDorbandSchnetterTiglio2007.jl")
 include("SBP_coefficients/SharanBradyLivescu2022.jl")
+include("SBP_coefficients/WilliamsDuru2024.jl")
 
 include("conservation_laws/general_laws.jl")
 include("conservation_laws/burgers.jl")
@@ -161,14 +162,15 @@ export UniformMesh1D, UniformPeriodicMesh1D
 export couple_continuously, couple_discontinuously
 export mul!
 
-export Fornberg1998, Holoborodko2008, BeljaddLeFlochMishraParés2017
+export Fornberg1998, Holoborodko2008, LanczosLowNoise, BeljaddLeFlochMishraParés2017
 export MattssonNordström2004, MattssonSvärdNordström2004, MattssonSvärdShoeybi2008,
        Mattsson2012, Mattsson2014,
        MattssonAlmquistCarpenter2014Extended, MattssonAlmquistCarpenter2014Optimal,
        Mattsson2017,
        MattssonAlmquistVanDerWeide2018Minimal, MattssonAlmquistVanDerWeide2018Accurate,
        DienerDorbandSchnetterTiglio2007,
-       SharanBradyLivescu2022
+       SharanBradyLivescu2022,
+       WilliamsDuru2024
 export Tadmor1989, MadayTadmor1989, Tadmor1993,
        TadmorWaagan2012Standard, TadmorWaagan2012Convergent
 export GlaubitzNordströmÖffner2023
