@@ -11,7 +11,7 @@ using PreallocationTools: DiffCache, get_tmp
 function SummationByPartsOperators.function_space_operator(basis_functions, nodes::Vector{T},
                                                            source::SourceOfCoefficients;
                                                            derivative_order = 1, accuracy_order = 0, bandwidth = length(nodes) - 1,
-                                                           size_boundary = 2 * bandwidth,
+                                                           size_boundary = 2 * bandwidth, different_values = true,
                                                            opt_alg = LBFGS(), options = Options(g_tol = 1e-14, iterations = 10000),
                                                            verbose = false) where {T, SourceOfCoefficients}
 
@@ -24,7 +24,8 @@ function SummationByPartsOperators.function_space_operator(basis_functions, node
     sort!(nodes)
     weights, D = construct_function_space_operator(basis_functions, nodes, source;
                                                    bandwidth = bandwidth, size_boundary = size_boundary,
-                                                   opt_alg = opt_alg, options = options, verbose = verbose)
+                                                   different_values = different_values, opt_alg = opt_alg,
+                                                   options = options, verbose = verbose)
     return MatrixDerivativeOperator(first(nodes), last(nodes), nodes, weights, D, accuracy_order, source)
 end
 
@@ -200,11 +201,14 @@ function get_nsigma(N, bandwidth, size_boundary = 2 * bandwidth, different_value
         return div(N * (N - 1), 2)
     else
         if different_values
-            # upper right corner for boundary blocks (2b)x(2b) each: (2b*(2b - 1)/2 = b*(2b - 1))
+            # upper right corner for boundary blocks (bb)x(bb) each: bb*(bb - 1)/2
             # lower triangle including diagonal for two different upper and right central blocks bxb each: b*(b + 1)/2
-            # non-repeating stencil for diagonal block: (N - 5b)b + b*(b - 1)/2
-            # => in total: Nb + b(b - 3)/2
-            return N * bandwidth + div(bandwidth * (bandwidth - 3), 2)
+            # non-repeating stencil for diagonal block: (N - 2bb - b)b + b*(b - 1)/2 = Nb - 1/2(4bb*b + b^2 + b)
+            # => in total: Nb + 1/2b^2 + bb^2 - 2bb*b - bb + 1/2b
+            # return N * bandwidth + div(bandwidth * (bandwidth - 3), 2) # for bb = 2b
+            b = bandwidth
+            bb = size_boundary
+            return N * b + div(b * (b + 1), 2) + bb^2 - 2 * b * bb - bb
         else
             # upper right corner for boundary blocks (bb)x(bb): bb*(bb - 1)/2 plus b from repeating stencil
             # => in total: bb*(bb - 1)/2 + b
@@ -217,14 +221,11 @@ end
 function construct_function_space_operator(basis_functions, nodes,
                                            ::GlaubitzNordströmÖffner2023;
                                            bandwidth = length(nodes) - 1,
-                                           size_boundary = 2 * bandwidth,
+                                           size_boundary = 2 * bandwidth, different_values = true,
                                            opt_alg = LBFGS(), options = Options(g_tol = 1e-14, iterations = 10000),
                                            verbose = false)
     K = length(basis_functions)
     N = length(nodes)
-    # if true all the entries in S are different except for the skew-symmetric part (makes sense for non-equidistant nodes and general bases),
-    # if false the entries the stencil is repeated in the central part and the two boundary closures share their values
-    different_values = true
     L = get_nsigma(N, bandwidth, size_boundary, different_values)
     @show L
     @show div(N * (N - 1), 2)
