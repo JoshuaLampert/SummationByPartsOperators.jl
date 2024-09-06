@@ -37,6 +37,7 @@ end
 """
     function_space_operator(basis_functions, nodes, source;
                             derivative_order = 1, accuracy_order = 0, bandwidth = length(nodes) - 1,
+                            size_boundary = 2 * bandwidth,
                             opt_alg = Optim.LBFGS(), options = Optim.Options(g_tol = 1e-14, iterations = 10000),
                             verbose = false)
 
@@ -48,12 +49,13 @@ interval `[x_min, x_max]` with the nodes `nodes`, where `x_min` is taken as the 
 but does not have any effect on the operator. The operator is constructed solving an optimization
 problem with Optim.jl. You can specify the optimization algorithm and options for the optimization problem
 with the keyword arguments `opt_alg` and `options` respectively, see also the
-[documentation of Optim.jl](https://julianlsolvers.github.io/Optim.jl/stable/user/config/). The keyword
-argument `bandwidth` specifies the bandwidth of the operator, which is by default set to `length(nodes) - 1`,
-i.e., a dense operator. To construct a sparse operator, you can set the bandwidth to a smaller value, such
-that `4 * basis_functions < length(nodes)`, which is a requirement for the boundary blocks in the upper left
-and lower right of the resulting operator. The keyword argument `verbose` can be set to `true` to print
-information about the optimization process.
+[documentation of Optim.jl](https://julianlsolvers.github.io/Optim.jl/stable/user/config/).
+The keyword arguments `bandwidth` and `size_boundary` specifiy the bandwidth and the size of the
+boundary blocks of the operator, where the default of `bandwidth` is set to `length(nodes) - 1`,
+i.e., a dense operator (in this case `size_boundary` is ignored). To construct a sparse operator, you can set the
+bandwidth to a smaller value, such that `2 * size_boundary + bandwidth < length(nodes)`, which is a
+requirement for the boundary blocks in the upper left and lower right of the resulting operator.
+The keyword argument `verbose` can be set to `true` to print information about the optimization process.
 
 The operator that is returned follows the general interface. Currently, it is wrapped in a
 [`MatrixDerivativeOperator`](@ref), but this might change in the future.
