@@ -39,17 +39,22 @@ end
                             derivative_order = 1, accuracy_order = 0, bandwidth = length(nodes) - 1,
                             size_boundary = 2 * bandwidth, different_values = true,
                             opt_alg = Optim.LBFGS(), options = Optim.Options(g_tol = 1e-14, iterations = 10000),
-                            verbose = false)
+                            x0 = nothing, verbose = false)
 
 Construct an operator that represents a first-derivative operator in a function space spanned by
 the `basis_functions`, which is an iterable of functions. The operator is constructed on the
 interval `[x_min, x_max]` with the nodes `nodes`, where `x_min` is taken as the minimal value in
 `nodes` and `x_max` the maximal value. Note that the `nodes` will be sorted internally. The
 `accuracy_order` is the order of the accuracy of the operator, which can optionally be passed,
-but does not have any effect on the operator. The operator is constructed solving an optimization
-problem with Optim.jl. You can specify the optimization algorithm and options for the optimization problem
-with the keyword arguments `opt_alg` and `options` respectively, see also the
-[documentation of Optim.jl](https://julianlsolvers.github.io/Optim.jl/stable/user/config/).
+but does not have any effect on the operator.
+
+The operator is constructed solving an optimization problem with Optim.jl. You can specify the
+optimization algorithm and options for the optimization problem with the keyword arguments `opt_alg`
+and `options` respectively, see also the
+[documentation of Optim.jl](https://julianlsolvers.github.io/Optim.jl/stable/user/config/). The initial
+guess for the optimization problem can be passed with the keyword argument `x0`, which is optional.
+If `nothing` is passed, a default initial guess (zeros for the entries of the differentiation matrix and
+`1/N`, where `N` is the number of `nodes`, for the weights) is used.
 
 The keyword arguments `bandwidth` and `size_boundary` specifiy the bandwidth and the size of the
 boundary blocks of the operator, where the default of `bandwidth` is set to `length(nodes) - 1`,

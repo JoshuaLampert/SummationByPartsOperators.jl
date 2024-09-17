@@ -13,7 +13,7 @@ function SummationByPartsOperators.function_space_operator(basis_functions, node
                                                            derivative_order = 1, accuracy_order = 0, bandwidth = length(nodes) - 1,
                                                            size_boundary = 2 * bandwidth, different_values = true,
                                                            opt_alg = LBFGS(), options = Options(g_tol = 1e-14, iterations = 10000),
-                                                           verbose = false) where {T, SourceOfCoefficients}
+                                                           x0 = nothing, verbose = false) where {T, SourceOfCoefficients}
 
     if derivative_order != 1
         throw(ArgumentError("Derivative order $derivative_order not implemented."))
@@ -23,9 +23,8 @@ function SummationByPartsOperators.function_space_operator(basis_functions, node
     end
     sort!(nodes)
     weights, D = construct_function_space_operator(basis_functions, nodes, source;
-                                                   bandwidth = bandwidth, size_boundary = size_boundary,
-                                                   different_values = different_values, opt_alg = opt_alg,
-                                                   options = options, verbose = verbose)
+                                                   bandwidth, size_boundary, different_values, opt_alg,
+                                                   options, x0, verbose)
     return MatrixDerivativeOperator(first(nodes), last(nodes), nodes, weights, D, accuracy_order, source)
 end
 
@@ -223,7 +222,7 @@ function construct_function_space_operator(basis_functions, nodes,
                                            bandwidth = length(nodes) - 1,
                                            size_boundary = 2 * bandwidth, different_values = true,
                                            opt_alg = LBFGS(), options = Options(g_tol = 1e-14, iterations = 10000),
-                                           verbose = false)
+                                           x0 = nothing, verbose = false)
     K = length(basis_functions)
     N = length(nodes)
     L = get_nsigma(N, bandwidth, size_boundary, different_values)
@@ -256,7 +255,9 @@ function construct_function_space_operator(basis_functions, nodes,
     daij_drhok = zeros(eltype(nodes), N, K, N)
     p = (V, V_x, R, x_length, S_cache, A_cache, SV_cache, PV_x_cache, bandwidth, size_boundary, different_values, daij_dsigmak, daij_drhok)
 
-    x0 = zeros(L + N)
+    if isnothing(x0)
+        x0 = [zeros(L); 1/N * ones(N)]
+    end
 
     if bandwidth == N - 1
         fg!(F, G, x) = optimization_function_and_grad!(F, G, x, p)
