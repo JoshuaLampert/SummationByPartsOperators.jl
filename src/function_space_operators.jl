@@ -54,7 +54,7 @@ and `options` respectively, see also the
 [documentation of Optim.jl](https://julianlsolvers.github.io/Optim.jl/stable/user/config/). The initial
 guess for the optimization problem can be passed with the keyword argument `x0`, which is optional.
 If `nothing` is passed, a default initial guess (zeros for the entries of the differentiation matrix and
-`1/N`, where `N` is the number of `nodes`, for the weights) is used.
+equal values for all the weights) is used.
 
 The keyword arguments `bandwidth` and `size_boundary` specifiy the bandwidth and the size of the
 boundary blocks of the operator, where the default of `bandwidth` is set to `length(nodes) - 1`,
@@ -82,3 +82,5 @@ See also [`GlaubitzNordströmÖffner2023`](@ref).
     This is an experimental feature and may change in future releases.
 """
 function function_space_operator end
+
+function get_optimization_entries end

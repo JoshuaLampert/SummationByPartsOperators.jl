@@ -102,18 +102,17 @@ end
 function set_banded!(D, sigma, bandwidth, size_boundary = 2 * bandwidth, init_k = 1, different_values = true)
     N = size(D, 1)
     k = init_k
-    L = get_nsigma(N, bandwidth, size_boundary, different_values)
     for i in 1:N
         for j in (i + 1):N
             if j - i <= bandwidth
                 if different_values
                     l = k
+                    k += 1
                 else
-                    l = L + i - j + 1
+                    l = init_k + j - i - 1
                 end
                 D[i, j] = sigma[l]
                 D[j, i] = -sigma[l]
-                k += 1
             end
         end
     end
@@ -128,13 +127,12 @@ function set_triangular!(C, sigma, bandwidth, size_boundary = 2 * bandwidth, ini
     else
         start_i = size_boundary - bandwidth + 1
     end
-    L = get_nsigma(N, bandwidth, size_boundary, different_values) - bandwidth
     for i in start_i:N
         for j in 1:(i - start_i + 1)
             if different_values
                 l = k
             else
-                l = L + i - j + 2 - start_i
+                l = init_k - 1 + bandwidth + j - (i - start_i + 1)
             end
             C[i, j] = sigma[l]
             k += 1
@@ -185,8 +183,14 @@ permute_rows_and_cols(P) = P[size(P, 1):-1:1, size(P, 2):-1:1]
     end
 end
 
-sig(x) = 1 / (1 + exp(-x))
-sig_deriv(x) = sig(x) * (1 - sig(x))
+# sig(rho) = 1 / (1 + exp(-rho))
+# sig_deriv(rho) = sig(rho) * (1 - sig(rho))
+# invsig(p) = log(p / (1 - p))
+
+# leading to softmax
+sig(x) = exp(x)
+sig_deriv(x) = exp(x)
+invsig(p) = log(p)
 
 function create_P(rho, x_length)
     P = Diagonal(sig.(rho))
@@ -226,8 +230,8 @@ function construct_function_space_operator(basis_functions, nodes,
     K = length(basis_functions)
     N = length(nodes)
     L = get_nsigma(N, bandwidth, size_boundary, different_values)
-    @show L
-    @show div(N * (N - 1), 2)
+    # @show L
+    # @show div(N * (N - 1), 2)
     basis_functions_derivatives = [x -> ForwardDiff.derivative(basis_functions[i], x) for i in 1:K]
     basis_functions_orthonormalized, basis_functions_orthonormalized_derivatives = orthonormalize_gram_schmidt(basis_functions,
                                                                                                                basis_functions_derivatives,
@@ -256,8 +260,9 @@ function construct_function_space_operator(basis_functions, nodes,
     p = (V, V_x, R, x_length, S_cache, A_cache, SV_cache, PV_x_cache, bandwidth, size_boundary, different_values, daij_dsigmak, daij_drhok)
 
     if isnothing(x0)
-        x0 = [zeros(L); 1/N * ones(N)]
+        x0 = [zeros(L); invsig.(1/N * ones(N))]
     end
+    @show optimization_function(x0, p)
 
     if bandwidth == N - 1
         fg!(F, G, x) = optimization_function_and_grad!(F, G, x, p)
@@ -366,6 +371,52 @@ end
     if !isnothing(F)
         return norm(A)^2
     end
+end
+
+# Helper function to get the entries to optimize for from other operators.
+# These can, e.g., be used to initialize the optimization problem.
+function SummationByPartsOperators.get_optimization_entries(D;
+                                                            bandwidth = div(SummationByPartsOperators.accuracy_order(D), 2),
+                                                            size_boundary = SummationByPartsOperators.lower_bandwidth(D) + 1,
+                                                            different_values = false)
+    p = diag(SummationByPartsOperators.mass_matrix(D))
+    # for sig = exp this is only equal to the values from the optimization up to a constant, but they give the same P
+    # if sig is the logistic function, inverting the normalized logistic function is harder, but this still works
+    # (eventhough it is not the exaxt inverse)
+    rho = invsig.(p)
+    Q = SummationByPartsOperators.mass_matrix(D) * Matrix(D)
+    S = 0.5 * (Q - Q')
+    N = size(D, 1)
+    L = get_nsigma(N, bandwidth, size_boundary, different_values)
+    sigma = zeros(L)
+    if bandwidth == N - 1  # dense operator
+        k = 1
+        for i in 1:N
+            for j in (i + 1):N
+                sigma[k] = S[i, j]
+                k += 1
+            end
+        end
+    else # sparse operator
+        if different_values
+            # TODO
+        else
+            k = 1
+            # values from upper left boundary block
+            for i in 1:size_boundary
+                for j in (i + 1):size_boundary
+                    sigma[k] = S[i, j]
+                    k += 1
+                end
+            end
+            # values from triangle block (repeating stencil)
+            for i in size_boundary:-1:(size_boundary - bandwidth + 1)
+                sigma[k] = S[i, size_boundary + 1]
+                k += 1
+            end
+        end
+    end
+    return [sigma; rho]
 end
 
 end # module
