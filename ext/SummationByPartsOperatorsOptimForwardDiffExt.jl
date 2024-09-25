@@ -148,12 +148,12 @@ permute_rows_and_cols(P) = P[size(P, 1):-1:1, size(P, 2):-1:1]
         set_skew_symmetric!(S, sigma)
     else
         b = bandwidth
-        bb = size_boundary
+        c = size_boundary
         # upper left boundary block
-        M1 = S[1:bb, 1:bb]
+        M1 = S[1:c, 1:c]
         k = set_skew_symmetric!(M1, sigma, 1)
         # lower right boundary block
-        M2 = S[(N - bb + 1):N, (N - bb + 1):N]
+        M2 = S[(N - c + 1):N, (N - c + 1):N]
         if different_values
             k = set_skew_symmetric!(M2, sigma, k)
         else
@@ -161,24 +161,24 @@ permute_rows_and_cols(P) = P[size(P, 1):-1:1, size(P, 2):-1:1]
         end
 
         # banded matrix in the middle
-        D = S[(bb + 1):(N - bb), (bb + 1):(N - bb)]
-        k = set_banded!(D, sigma, b, bb, k, different_values)
+        D = S[(c + 1):(N - c), (c + 1):(N - c)]
+        k = set_banded!(D, sigma, b, c, k, different_values)
 
         # upper central block with triangular part
-        C1 = S[1:bb, (bb + 1):(N - bb)]
-        k = set_triangular!(C1, sigma, b, bb, k, different_values)
+        C1 = S[1:c, (c + 1):(N - c)]
+        k = set_triangular!(C1, sigma, b, c, k, different_values)
         # central left block with triangular part
-        S[(bb + 1):(N - bb), 1:bb] = -C1'
+        S[(c + 1):(N - c), 1:c] = -C1'
         # central right block with triangular part
-        C2 = S[(bb + 1):(N - bb), (N - bb + 1):N]
+        C2 = S[(c + 1):(N - c), (N - c + 1):N]
         if different_values
-            k = set_triangular!(C2, sigma, b, bb, k, different_values)
+            k = set_triangular!(C2, sigma, b, c, k, different_values)
             # lower central block with triangular part
-            S[(N - bb + 1):N, (bb + 1):(N - bb)] = -C2'
+            S[(N - c + 1):N, (c + 1):(N - c)] = -C2'
         else
             C1_bar = permute_rows_and_cols(C1)
             C2 .= C1_bar'
-            S[(N - bb + 1):N, (bb + 1):(N - bb)] = -C1_bar
+            S[(N - c + 1):N, (c + 1):(N - c)] = -C1_bar
         end
     end
 end
@@ -204,18 +204,18 @@ function get_nsigma(N, bandwidth, size_boundary = 2 * bandwidth, different_value
         return div(N * (N - 1), 2)
     else
         if different_values
-            # upper right corner for boundary blocks (bb)x(bb) each: bb*(bb - 1)/2
+            # upper right corner for boundary blocks cxc each: c*(c - 1)/2
             # lower triangle including diagonal for two different upper and right central blocks bxb each: b*(b + 1)/2
-            # non-repeating stencil for diagonal block: (N - 2bb - b)b + b*(b - 1)/2 = Nb - 1/2(4bb*b + b^2 + b)
-            # => in total: Nb + 1/2b^2 + bb^2 - 2bb*b - bb + 1/2b
-            # return N * bandwidth + div(bandwidth * (bandwidth - 3), 2) # for bb = 2b
+            # non-repeating stencil for diagonal block: (N - 2c - b)b + b*(b - 1)/2 = Nb - 1/2(4c*b + b^2 + b)
+            # => in total: Nb + 1/2b^2 + c^2 - 2c*b - c + 1/2b
+            # return N * bandwidth + div(bandwidth * (bandwidth - 3), 2) # for c = 2b
             b = bandwidth
-            bb = size_boundary
-            return N * b + div(b * (b + 1), 2) + bb^2 - 2 * b * bb - bb
+            c = size_boundary
+            return N * b + div(b * (b + 1), 2) + c^2 - 2 * b * c - c
         else
-            # upper right corner for boundary blocks (bb)x(bb): bb*(bb - 1)/2 plus b from repeating stencil
-            # => in total: bb*(bb - 1)/2 + b
-            # return 2 * bandwidth^2 # for bb = 2b
+            # upper right corner for boundary blocks cxc: c*(c - 1)/2 plus b from repeating stencil
+            # => in total: c*(c - 1)/2 + b
+            # return 2 * bandwidth^2 # for c = 2b
             return div(size_boundary * (size_boundary - 1), 2) + bandwidth
         end
     end
@@ -373,6 +373,19 @@ end
     end
 end
 
+function reconstruct_skew_symmetric!(sigma, S; init_k = 1)
+    N = size(S, 1)
+    k = init_k
+    for i in 1:N
+        for j in (i + 1):N
+            sigma[k] = S[i, j]
+            k += 1
+        end
+    end
+    return k
+
+end
+
 # Helper function to get the entries to optimize for from other operators.
 # These can, e.g., be used to initialize the optimization problem.
 function SummationByPartsOperators.get_optimization_entries(D;
@@ -389,14 +402,8 @@ function SummationByPartsOperators.get_optimization_entries(D;
     N = size(D, 1)
     L = get_nsigma(N, bandwidth, size_boundary, different_values)
     sigma = zeros(L)
-    if bandwidth == N - 1  # dense operator
-        k = 1
-        for i in 1:N
-            for j in (i + 1):N
-                sigma[k] = S[i, j]
-                k += 1
-            end
-        end
+    if bandwidth == N - 1 # dense operator
+        reconstruct_skew_symmetric!(sigma, S)
     else # sparse operator
         if different_values
             # TODO
