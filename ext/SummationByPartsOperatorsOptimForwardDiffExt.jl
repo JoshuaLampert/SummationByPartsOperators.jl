@@ -373,7 +373,7 @@ end
     end
 end
 
-function reconstruct_skew_symmetric!(sigma, S; init_k = 1)
+function reconstruct_skew_symmetric!(sigma, S, init_k = 1)
     N = size(S, 1)
     k = init_k
     for i in 1:N
@@ -383,7 +383,35 @@ function reconstruct_skew_symmetric!(sigma, S; init_k = 1)
         end
     end
     return k
+end
 
+# Only for different_values = true
+function reconstruct_banded!(sigma, D, bandwidth, init_k = 1)
+    N = size(D, 1)
+    k = init_k
+    for i in 1:N
+        for j in (i + 1):N
+            if j - i <= bandwidth
+                sigma[k] = D[i, j]
+                k += 1
+            end
+        end
+    end
+    return k
+end
+
+# Only for different_values = true
+function reconstruct_triangular!(sigma, C, bandwidth, init_k = 1)
+    N = size(C, 1)
+    k = init_k
+    start_i = N - bandwidth + 1
+    for i in start_i:N
+        for j in 1:(i - start_i + 1)
+            sigma[k] = C[i, j]
+            k += 1
+        end
+    end
+    return k
 end
 
 # Helper function to get the entries to optimize for from other operators.
@@ -392,6 +420,8 @@ function SummationByPartsOperators.get_optimization_entries(D;
                                                             bandwidth = div(SummationByPartsOperators.accuracy_order(D), 2),
                                                             size_boundary = SummationByPartsOperators.lower_bandwidth(D) + 1,
                                                             different_values = false)
+    b = bandwidth
+    c = size_boundary
     p = diag(SummationByPartsOperators.mass_matrix(D))
     # for sig = exp this is only equal to the values from the optimization up to a constant, but they give the same P
     # if sig is the logistic function, inverting the normalized logistic function is harder, but this still works
@@ -400,25 +430,38 @@ function SummationByPartsOperators.get_optimization_entries(D;
     Q = SummationByPartsOperators.mass_matrix(D) * Matrix(D)
     S = 0.5 * (Q - Q')
     N = size(D, 1)
-    L = get_nsigma(N, bandwidth, size_boundary, different_values)
+    L = get_nsigma(N, b, c, different_values)
     sigma = zeros(L)
-    if bandwidth == N - 1 # dense operator
+    if b == N - 1 # dense operator
         reconstruct_skew_symmetric!(sigma, S)
     else # sparse operator
         if different_values
-            # TODO
+            k = 1
+            # upper left boundary block
+            M1 = S[1:c, 1:c]
+            k = reconstruct_skew_symmetric!(sigma, M1, k)
+            # lower right boundary block
+            M2 = S[(N - c + 1):N, (N - c + 1):N]
+            k = reconstruct_skew_symmetric!(sigma, M2, k)
+
+            # banded matrix in the middle
+            D = S[(c + 1):(N - c), (c + 1):(N - c)]
+            k = reconstruct_banded!(sigma, D, b, k)
+
+            # upper central block with triangular part
+            C1 = S[1:c, (c + 1):(N - c)]
+            k = reconstruct_triangular!(sigma, C1, b, k)
+            # central right block with triangular part
+            C2 = S[(c + 1):(N - c), (N - c + 1):N]
+            k = reconstruct_triangular!(sigma, C2, b, k)
         else
             k = 1
-            # values from upper left boundary block
-            for i in 1:size_boundary
-                for j in (i + 1):size_boundary
-                    sigma[k] = S[i, j]
-                    k += 1
-                end
-            end
+            # upper left boundary block
+            M1 = S[1:c, 1:c]
+            k = reconstruct_skew_symmetric!(sigma, M1, k)
             # values from triangle block (repeating stencil)
-            for i in size_boundary:-1:(size_boundary - bandwidth + 1)
-                sigma[k] = S[i, size_boundary + 1]
+            for i in c:-1:(c - b + 1)
+                sigma[k] = S[i, c + 1]
                 k += 1
             end
         end
