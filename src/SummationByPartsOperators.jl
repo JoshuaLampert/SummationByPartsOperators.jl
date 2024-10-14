@@ -146,7 +146,7 @@ export PeriodicDerivativeOperator, PeriodicDissipationOperator,
 export FilterCallback, ConstantFilter, ExponentialFilter
 export SafeMode, FastMode, ThreadedMode
 export derivative_order, accuracy_order, source_of_coefficients, grid, semidiscretize
-export mass_matrix
+export mass_matrix, mass_matrix_boundary
 export integrate, left_boundary_weight, right_boundary_weight,
        scale_by_mass_matrix!, scale_by_inverse_mass_matrix!,
        derivative_left, derivative_right,
@@ -157,7 +157,7 @@ export periodic_central_derivative_operator, periodic_derivative_operator, deriv
        dissipation_operator, var_coef_derivative_operator,
        fourier_derivative_operator,
        legendre_derivative_operator, legendre_second_derivative_operator,
-       upwind_operators, function_space_operator
+       upwind_operators, function_space_operator, multidimensional_function_space_operator
 export UniformMesh1D, UniformPeriodicMesh1D
 export couple_continuously, couple_discontinuously
 export mul!
@@ -173,7 +173,7 @@ export MattssonNordström2004, MattssonSvärdNordström2004, MattssonSvärdShoey
        WilliamsDuru2024
 export Tadmor1989, MadayTadmor1989, Tadmor1993,
        TadmorWaagan2012Standard, TadmorWaagan2012Convergent
-export GlaubitzNordströmÖffner2023
+export GlaubitzNordströmÖffner2023, GlaubitzIskeLampertÖffner2024
 
 export BurgersPeriodicSemidiscretization, BurgersNonperiodicSemidiscretization,
        CubicPeriodicSemidiscretization, CubicNonperiodicSemidiscretization,

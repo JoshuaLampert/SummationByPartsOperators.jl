@@ -3,9 +3,168 @@ module SummationByPartsOperatorsOptimForwardDiffExt
 using Optim: Optim, Options, LBFGS, optimize, minimizer
 using ForwardDiff: ForwardDiff
 
-using SummationByPartsOperators: SummationByPartsOperators, GlaubitzNordströmÖffner2023, MatrixDerivativeOperator
+using SummationByPartsOperators: SummationByPartsOperators, GlaubitzNordströmÖffner2023, GlaubitzIskeLampertÖffner2024,
+                                 MatrixDerivativeOperator, MultidimensionalFunctionSpaceOperator
 using LinearAlgebra: Diagonal, LowerTriangular, dot, diag, norm, mul!
 using SparseArrays: spzeros
+using PreallocationTools: DiffCache, get_tmp
+
+function vandermonde_matrix(functions, nodes)
+    N = length(nodes)
+    K = length(functions)
+    T = typeof(functions[1](nodes[1]))
+    V = zeros(T, N, K)
+    for i in 1:N
+        for j in 1:K
+            V[i, j] = functions[j](nodes[i])
+        end
+    end
+    return V
+end
+
+function create_S(sigma, N)
+    S = zeros(eltype(sigma), N, N)
+    set_S!(S, sigma, N)
+    return S
+end
+
+function set_S!(S, sigma, N)
+    k = 1
+    for i in 1:N
+        for j in (i + 1):N
+            S[i, j] = sigma[k]
+            S[j, i] = -sigma[k]
+            k += 1
+        end
+    end
+end
+
+sig(x) = 1 / (1 + exp(-x))
+sig_deriv(x) = sig(x) * (1 - sig(x))
+invsig(p) = log(p / (1 - p))
+
+function create_P(rho, vol)
+    P = Diagonal(sig.(rho))
+    P *= vol / sum(P)
+    return P
+end
+
+function create_B(phi, normals, on_boundary, i)
+    b = zeros(eltype(phi), length(on_boundary))
+    B = Diagonal(b)
+    set_B!(B, phi, normals, on_boundary, i)
+    return B
+end
+
+function set_B!(B, phi, normals, on_boundary, i)
+    j = 1
+    for k in eachindex(on_boundary)
+        if on_boundary[k]
+            B[k, k] = phi[j] * normals[j][i]
+            j += 1
+        end
+    end
+end
+
+function SummationByPartsOperators.multidimensional_function_space_operator(basis_functions, nodes, on_boundary, normals, moments, vol,
+                                                                            source::SourceOfCoefficients;
+                                                                            derivative_order = 1, accuracy_order = 0,
+                                                                            opt_alg = LBFGS(), options = Options(g_tol = 1e-14, iterations = 10000),
+                                                                            verbose = false) where {SourceOfCoefficients}
+
+    if derivative_order != 1
+        throw(ArgumentError("Derivative order $derivative_order not implemented."))
+    end
+    weights, weights_boundary, Ds = construct_multidimensional_function_space_operator(basis_functions, nodes, on_boundary, normals, moments, vol, source;
+                                                                                       opt_alg, options, verbose)
+    return MultidimensionalFunctionSpaceOperator(nodes, on_boundary, normals, weights, weights_boundary, Ds, accuracy_order, source)
+end
+
+function construct_multidimensional_function_space_operator(basis_functions, nodes, on_boundary, normals, moments, vol,
+                                                            ::GlaubitzIskeLampertÖffner2024;
+                                                            opt_alg = LBFGS(), options = Options(g_tol = 1e-14, iterations = 10000),
+                                                            verbose = false)
+    T = typeof(basis_functions[1](nodes[1]))
+    d = length(first(nodes))
+    K = length(basis_functions)
+    N = length(nodes)
+    N_boundary = sum(on_boundary)
+    @assert length(normals) == N_boundary "You must provide normals for all boundary nodes (length(normals) = $(length(normals)), N_boundary = $N_boundary)."
+    L = div(N * (N - 1), 2)
+    basis_functions_gradients = [x -> ForwardDiff.gradient(basis_functions[i], x) for i in 1:K]
+    # TODO: Orthonormalize? What happens with moments? Need moments with respect to orthonormalized basis functions?
+    V = vandermonde_matrix(basis_functions, nodes)
+    V_xis = ntuple(j -> vandermonde_matrix([x -> basis_functions_gradients[i](x)[j] for i in 1:K], nodes), d)
+
+    S = zeros(T, N, N)
+    A = zeros(T, N, K)
+    M = zeros(T, K, K)
+    S_cache = DiffCache(S)
+    A_cache = DiffCache(A)
+    SV_cache = DiffCache(A)
+    PV_xi_cache = DiffCache(A)
+    B_cache = DiffCache(S)
+    BV_cache = DiffCache(A)
+    VTBV_cache = DiffCache(M)
+    C_cache = DiffCache(M)
+    p = (V, V_xis, normals, moments, on_boundary, vol, S_cache, A_cache, SV_cache, PV_xi_cache, B_cache, BV_cache, VTBV_cache, C_cache)
+    # x0 = zeros(d * L + N + N_boundary)
+    x0 = [zeros(d * L); invsig.(1/N * ones(N)); zeros(N_boundary)]
+    f(x) = multidimensional_optimization_function(x, p)
+    result = optimize(f, x0, opt_alg, options, autodiff = :forward)
+    verbose && display(result)
+
+    x = minimizer(result)
+    rho = x[(end - N - N_boundary + 1):(end - N_boundary)]
+    P = create_P(rho, vol)
+    weights = diag(P)
+    weights_boundary = x[(end - N_boundary + 1):end] # = phi
+    function create_D(i)
+        sigma = x[(i - 1) * L + 1:(i * L)]
+        S = create_S(sigma, N)
+        B = create_B(weights_boundary, normals, on_boundary, i)
+        Q = S + B / 2
+        D = inv(P) * Q
+        return D
+    end
+    Ds = ntuple(i -> create_D(i), d)
+    return weights, weights_boundary, Ds
+end
+
+@views function multidimensional_optimization_function(x, p)
+    V, V_xis, normals, moments, on_boundary, vol, S_cache, A_cache, SV_cache, PV_xi_cache, B_cache, BV_cache, C_cache, VTBV_cache = p
+    S = get_tmp(S_cache, x)
+    A = get_tmp(A_cache, x)
+    SV = get_tmp(SV_cache, x)
+    PV_xi = get_tmp(PV_xi_cache, x)
+    B = get_tmp(B_cache, x)
+    BV = get_tmp(BV_cache, x)
+    VTBV = get_tmp(VTBV_cache, x)
+    C = get_tmp(C_cache, x)
+    d = length(V_xis)
+    N = size(V, 1)
+    N_boundary = length(normals)
+    L = div(N * (N - 1), 2)
+    rho = x[(end - N - N_boundary + 1):(end - N_boundary)]
+    phi = x[(end - N_boundary + 1):end]
+    P = create_P(rho, vol)
+    res = 0.0
+    for i in 1:d
+        M = moments[i]
+        V_xi = V_xis[i]
+        sigma = x[(i - 1) * L + 1:(i * L)]
+        set_S!(S, sigma, N)
+        set_B!(B, phi, normals, on_boundary, i)
+        mul!(SV, S, V)
+        mul!(PV_xi, P, V_xi)
+        mul!(BV, B, V)
+        @. A = SV - PV_xi + 0.5 * BV
+        mul!(VTBV, V', BV)
+        @. C = VTBV - M
+        res += norm(A)^2 + norm(C)^2
+    end
+    return res
+end
 
 function SummationByPartsOperators.function_space_operator(basis_functions, nodes::Vector{T},
                                                            source::SourceOfCoefficients;
@@ -57,44 +216,6 @@ function orthonormalize_gram_schmidt(basis_functions, basis_functions_derivative
         A[k, :] = A[k, :] / r
     end
     return basis_functions_orthonormalized, basis_functions_orthonormalized_derivatives
-end
-
-function vandermonde_matrix(functions, nodes)
-    N = length(nodes)
-    K = length(functions)
-    V = zeros(eltype(nodes), N, K)
-    for i in 1:N
-        for j in 1:K
-            V[i, j] = functions[j](nodes[i])
-        end
-    end
-    return V
-end
-
-function create_S(sigma, N)
-    S = zeros(eltype(sigma), N, N)
-    set_S!(S, sigma, N)
-    return S
-end
-
-function set_S!(S, sigma, N)
-    k = 1
-    for i in 1:N
-        for j in (i + 1):N
-            S[i, j] = sigma[k]
-            S[j, i] = -sigma[k]
-            k += 1
-        end
-    end
-end
-
-sig(x) = 1 / (1 + exp(-x))
-sig_deriv(x) = sig(x) * (1 - sig(x))
-
-function create_P(rho, x_length)
-    P = Diagonal(sig.(rho))
-    P *= x_length / sum(P)
-    return P
 end
 
 function construct_function_space_operator(basis_functions, nodes,
