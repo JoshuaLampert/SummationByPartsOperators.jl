@@ -62,6 +62,8 @@ function set_B!(B, phi, normals, on_boundary, i)
         if on_boundary[k]
             B[k, k] = phi[j] * normals[j][i]
             j += 1
+        else
+            B[k, k] = 0.0
         end
     end
 end
