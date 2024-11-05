@@ -261,6 +261,8 @@ function construct_function_space_operator(basis_functions, nodes,
 
     if isnothing(x0)
         x0 = [zeros(L); invsig.(1/N * ones(N))]
+    else
+        @assert length(x0) == L + N "Initial guess has be L + N = $(L + N) long"
     end
     @show optimization_function(x0, p)
 
