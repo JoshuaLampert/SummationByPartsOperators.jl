@@ -100,8 +100,8 @@ a specific direction can be obtained with `mass_matrix_boundary(D, dim)`.
 
 See also [`multidimensional_function_space_operator`](@ref), [`GlaubitzIskeLampertÖffner2024`](@ref).
 """
-@auto_hash_equals struct MultidimensionalFunctionSpaceOperator{Dim, T, DType <: AbstractMatrix{T}, SourceOfCoefficients} <: AbstractNonperiodicDerivativeOperator{T}
-    grid::Vector{SVector{Dim, T}} # length(grid) == N
+@auto_hash_equals struct MultidimensionalFunctionSpaceOperator{Dim, T, NodesType, DType <: AbstractMatrix{T}, SourceOfCoefficients} <: AbstractNonperiodicDerivativeOperator{T}
+    grid::NodesType # length(grid) == N, e.g. Vector{SVector{Dim, T}} or `NodeSet` from KernelInterpolation.jl
     on_boundary::Vector{Bool} # length(on_boundary) == N
     normals::Vector{SVector{Dim, T}} # length(normals) == N_boundary < N
     weights::Vector{T} # length(weights) == N
@@ -110,13 +110,13 @@ See also [`multidimensional_function_space_operator`](@ref), [`GlaubitzIskeLampe
     accuracy_order::Int
     source::SourceOfCoefficients
 
-    function MultidimensionalFunctionSpaceOperator(nodes::Vector{SVector{Dim, T}},
+    function MultidimensionalFunctionSpaceOperator(nodes::NodesType,
                                                    on_boundary::Vector{Bool},
                                                    normals::Vector{SVector{Dim, T}},
                                                    weights::Vector{T}, weights_boundary::Vector{T},
                                                    Ds::NTuple{Dim, DType}, accuracy_order::Int,
-                                                   source::SourceOfCoefficients) where {Dim, T <: Real, DType <: AbstractMatrix{T}, SourceOfCoefficients}
-        new{Dim, T, DType, SourceOfCoefficients}(nodes, on_boundary, normals, weights, weights_boundary, Ds, accuracy_order, source)
+                                                   source::SourceOfCoefficients) where {Dim, T <: Real, NodesType, DType <: AbstractMatrix{T}, SourceOfCoefficients}
+        new{Dim, T, NodesType, DType, SourceOfCoefficients}(nodes, on_boundary, normals, weights, weights_boundary, Ds, accuracy_order, source)
     end
 end
 
