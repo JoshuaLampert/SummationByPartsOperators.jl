@@ -1,7 +1,7 @@
 module SummationByPartsOperatorsOptimForwardDiffExt
 
 using Optim: Optim, Options, LBFGS, optimize, minimizer
-using ForwardDiff: ForwardDiff
+import ForwardDiff
 
 using SummationByPartsOperators: SummationByPartsOperators, GlaubitzNordströmÖffner2023, GlaubitzIskeLampertÖffner2024,
                                  MatrixDerivativeOperator, MultidimensionalFunctionSpaceOperator
@@ -235,7 +235,7 @@ function construct_multidimensional_function_space_operator(basis_functions, nod
     end
 
     f(x) = multidimensional_optimization_function(x, p)
-    result = optimize(f, x0, opt_alg, options, autodiff = :forward)
+    result = optimize(f, x0, opt_alg, options; autodiff = :forward)
     verbose && display(result)
 
     x = minimizer(result)
