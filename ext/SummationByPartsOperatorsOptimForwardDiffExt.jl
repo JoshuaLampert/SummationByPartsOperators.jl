@@ -99,7 +99,7 @@ function set_skew_symmetric!(M, sigma, init_k = 1)
 end
 
 # D has to be square
-function set_banded!(D, sigma, bandwidth, size_boundary = 2 * bandwidth, init_k = 1, different_values = true)
+function set_banded!(D, sigma, bandwidth, init_k = 1, different_values = true)
     N = size(D, 1)
     k = init_k
     for i in 1:N
@@ -162,7 +162,7 @@ permute_rows_and_cols(P) = P[size(P, 1):-1:1, size(P, 2):-1:1]
 
         # banded matrix in the middle
         D = S[(c + 1):(N - c), (c + 1):(N - c)]
-        k = set_banded!(D, sigma, b, c, k, different_values)
+        k = set_banded!(D, sigma, b, k, different_values)
 
         # upper central block with triangular part
         C1 = S[1:c, (c + 1):(N - c)]
