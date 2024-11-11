@@ -22,19 +22,107 @@ function vandermonde_matrix(functions, nodes)
     return V
 end
 
-function create_S(sigma, N)
+function create_S(sigma, N, bandwidth, size_boundary, different_values)
     S = zeros(eltype(sigma), N, N)
-    set_S!(S, sigma, N)
+    set_S!(S, sigma, N, bandwidth, size_boundary, different_values)
     return S
 end
 
-function set_S!(S, sigma, N)
-    k = 1
+# M has to be square
+function set_skew_symmetric!(M, sigma, init_k = 1)
+    N = size(M, 1)
+    k = init_k
     for i in 1:N
         for j in (i + 1):N
-            S[i, j] = sigma[k]
-            S[j, i] = -sigma[k]
+            M[i, j] = sigma[k]
+            M[j, i] = -sigma[k]
             k += 1
+        end
+    end
+    return k
+end
+
+# D has to be square
+function set_banded!(D, sigma, bandwidth, init_k = 1, different_values = true)
+    N = size(D, 1)
+    k = init_k
+    for i in 1:N
+        for j in (i + 1):N
+            if j - i <= bandwidth
+                if different_values
+                    l = k
+                    k += 1
+                else
+                    l = init_k + j - i - 1
+                end
+                D[i, j] = sigma[l]
+                D[j, i] = -sigma[l]
+            end
+        end
+    end
+    return k
+end
+
+function set_triangular!(C, sigma, bandwidth, size_boundary = 2 * bandwidth, init_k = 1, different_values = true)
+    N = size(C, 1)
+    k = init_k
+    if different_values
+        start_i = N - bandwidth + 1
+    else
+        start_i = size_boundary - bandwidth + 1
+    end
+    for i in start_i:N
+        for j in 1:(i - start_i + 1)
+            if different_values
+                l = k
+            else
+                l = init_k - 1 + bandwidth + j - (i - start_i + 1)
+            end
+            C[i, j] = sigma[l]
+            k += 1
+        end
+    end
+    return k
+end
+
+permute_rows_and_cols(P) = P[size(P, 1):-1:1, size(P, 2):-1:1]
+
+@views function set_S!(S, sigma, N, bandwidth, size_boundary = 2 * bandwidth, different_values = true)
+    if bandwidth == N - 1
+        set_skew_symmetric!(S, sigma)
+    else
+        b = bandwidth
+        c = size_boundary
+        # upper left boundary block
+        M1 = S[1:c, 1:c]
+        k = set_skew_symmetric!(M1, sigma, 1)
+        # lower right boundary block
+        M2 = S[(N - c + 1):N, (N - c + 1):N]
+        if different_values
+            k = set_skew_symmetric!(M2, sigma, k)
+        else
+            M2 .= -permute_rows_and_cols(M1)
+        end
+
+        # banded matrix in the middle
+        D = S[(c + 1):(N - c), (c + 1):(N - c)]
+        k = set_banded!(D, sigma, b, k, different_values)
+
+        # upper central block with triangular part
+        C1 = S[1:c, (c + 1):(N - c)]
+        k = set_triangular!(C1, sigma, b, c, k, different_values)
+        # central left block with triangular part
+        S[(c + 1):(N - c), 1:c] = -C1'
+        # central right block with triangular part
+        C2 = S[(c + 1):(N - c), (N - c + 1):N]
+        if different_values
+            k = set_triangular!(C2, sigma, b, c, k, different_values)
+            # lower central block with triangular part
+            S[(N - c + 1):N, (c + 1):(N - c)] = -C2'
+        else
+            C1_bar = permute_rows_and_cols(C1)
+            C2 .= C1_bar'
+            S[(N - c + 1):N, (c + 1):(N - c)] = -C1_bar
         end
     end
 end
@@ -68,31 +156,59 @@ function set_B!(B, phi, normals, on_boundary, i)
     end
 end
 
+
+function get_nsigma(N, bandwidth, size_boundary = 2 * bandwidth, different_values = true)
+    if bandwidth == N - 1
+        # whole upper right triangle
+        return div(N * (N - 1), 2)
+    else
+        if different_values
+            # upper right corner for boundary blocks cxc each: c*(c - 1)/2
+            # lower triangle including diagonal for two different upper and right central blocks bxb each: b*(b + 1)/2
+            # non-repeating stencil for diagonal block: (N - 2c - b)b + b*(b - 1)/2 = Nb - 1/2(4c*b + b^2 + b)
+            # => in total: Nb + 1/2b^2 + c^2 - 2c*b - c + 1/2b
+            # return N * bandwidth + div(bandwidth * (bandwidth - 3), 2) # for c = 2b
+            b = bandwidth
+            c = size_boundary
+            return N * b + div(b * (b + 1), 2) + c^2 - 2 * b * c - c
+        else
+            # upper right corner for boundary blocks cxc: c*(c - 1)/2 plus b from repeating stencil
+            # => in total: c*(c - 1)/2 + b
+            # return 2 * bandwidth^2 # for c = 2b
+            return div(size_boundary * (size_boundary - 1), 2) + bandwidth
+        end
+    end
+end
+
 function SummationByPartsOperators.multidimensional_function_space_operator(basis_functions, nodes, on_boundary, normals, moments, vol,
                                                                             source::SourceOfCoefficients;
-                                                                            derivative_order = 1, accuracy_order = 0,
+                                                                            derivative_order = 1, accuracy_order = 0, bandwidth = length(nodes) - 1,
+                                                                            size_boundary = 2 * bandwidth, different_values = true,
                                                                             opt_alg = LBFGS(), options = Options(g_tol = 1e-14, iterations = 10000),
-                                                                            verbose = false) where {SourceOfCoefficients}
+                                                                            x0 = nothing, verbose = false) where {SourceOfCoefficients}
 
     if derivative_order != 1
         throw(ArgumentError("Derivative order $derivative_order not implemented."))
     end
     weights, weights_boundary, Ds = construct_multidimensional_function_space_operator(basis_functions, nodes, on_boundary, normals, moments, vol, source;
-                                                                                       opt_alg, options, verbose)
+                                                                                       bandwidth, size_boundary, different_values,
+                                                                                       opt_alg, options, x0, verbose)
     return MultidimensionalFunctionSpaceOperator(nodes, on_boundary, normals, weights, weights_boundary, Ds, accuracy_order, source)
 end
 
 function construct_multidimensional_function_space_operator(basis_functions, nodes, on_boundary, normals, moments, vol,
                                                             ::GlaubitzIskeLampertÖffner2024;
+                                                            bandwidth = length(nodes) - 1,
+                                                            size_boundary = 2 * bandwidth, different_values = true,
                                                             opt_alg = LBFGS(), options = Options(g_tol = 1e-14, iterations = 10000),
-                                                            verbose = false)
+                                                            x0 = nothing, verbose = false)
     T = typeof(basis_functions[1](nodes[1]))
     d = length(first(nodes))
     K = length(basis_functions)
     N = length(nodes)
     N_boundary = sum(on_boundary)
     @assert length(normals) == N_boundary "You must provide normals for all boundary nodes (length(normals) = $(length(normals)), N_boundary = $N_boundary)."
-    L = div(N * (N - 1), 2)
+    L = get_nsigma(N, bandwidth, size_boundary, different_values)
     basis_functions_gradients = [x -> ForwardDiff.gradient(basis_functions[i], x) for i in 1:K]
     # TODO: Orthonormalize? What happens with moments? Need moments with respect to orthonormalized basis functions?
     V = vandermonde_matrix(basis_functions, nodes)
@@ -109,9 +225,15 @@ function construct_multidimensional_function_space_operator(basis_functions, nod
     BV_cache = DiffCache(A)
     VTBV_cache = DiffCache(M)
     C_cache = DiffCache(M)
-    p = (V, V_xis, normals, moments, on_boundary, vol, S_cache, A_cache, SV_cache, PV_xi_cache, B_cache, BV_cache, VTBV_cache, C_cache)
-    # x0 = zeros(d * L + N + N_boundary)
-    x0 = [zeros(d * L); invsig.(1/N * ones(N)); zeros(N_boundary)]
+    p = (V, V_xis, normals, moments, on_boundary, vol, S_cache, A_cache, SV_cache, PV_xi_cache, B_cache, BV_cache, C_cache, VTBV_cache, bandwidth, size_boundary, different_values)
+    if isnothing(x0)
+        # x0 = zeros(d * L + N + N_boundary)
+        x0 = [zeros(d * L); invsig.(1/N * ones(N)); zeros(N_boundary)]
+    else
+        n_total = d * L + N + N_boundary
+        @assert length(x0) == n_total "Initial guess has be d * L + N + N_boundary = $n_total long"
+    end
+
     f(x) = multidimensional_optimization_function(x, p)
     result = optimize(f, x0, opt_alg, options, autodiff = :forward)
     verbose && display(result)
@@ -123,7 +245,7 @@ function construct_multidimensional_function_space_operator(basis_functions, nod
     weights_boundary = x[(end - N_boundary + 1):end] # = phi
     function create_D(i)
         sigma = x[(i - 1) * L + 1:(i * L)]
-        S = create_S(sigma, N)
+        S = create_S(sigma, N, bandwidth, size_boundary, different_values)
         B = create_B(weights_boundary, normals, on_boundary, i)
         Q = S + B / 2
         D = inv(P) * Q
@@ -134,7 +256,7 @@ function construct_multidimensional_function_space_operator(basis_functions, nod
 end
 
 @views function multidimensional_optimization_function(x, p)
-    V, V_xis, normals, moments, on_boundary, vol, S_cache, A_cache, SV_cache, PV_xi_cache, B_cache, BV_cache, C_cache, VTBV_cache = p
+    V, V_xis, normals, moments, on_boundary, vol, S_cache, A_cache, SV_cache, PV_xi_cache, B_cache, BV_cache, C_cache, VTBV_cache, bandwidth, size_boundary, different_values = p
     S = get_tmp(S_cache, x)
     A = get_tmp(A_cache, x)
     SV = get_tmp(SV_cache, x)
@@ -146,7 +268,7 @@ end
     d = length(V_xis)
     N = size(V, 1)
     N_boundary = length(normals)
-    L = div(N * (N - 1), 2)
+    L = get_nsigma(N, bandwidth, size_boundary, different_values)
     rho = x[(end - N - N_boundary + 1):(end - N_boundary)]
     phi = x[(end - N_boundary + 1):end]
     P = create_P(rho, vol)
@@ -155,7 +277,7 @@ end
         M = moments[i]
         V_xi = V_xis[i]
         sigma = x[(i - 1) * L + 1:(i * L)]
-        set_S!(S, sigma, N)
+        set_S!(S, sigma, N, bandwidth, size_boundary, different_values)
         set_B!(B, phi, normals, on_boundary, i)
         mul!(SV, S, V)
         mul!(PV_xi, P, V_xi)
@@ -170,15 +292,21 @@ end
 
 function SummationByPartsOperators.function_space_operator(basis_functions, nodes::Vector{T},
                                                            source::SourceOfCoefficients;
-                                                           derivative_order = 1, accuracy_order = 0,
+                                                           derivative_order = 1, accuracy_order = 0, bandwidth = length(nodes) - 1,
+                                                           size_boundary = 2 * bandwidth, different_values = true,
                                                            opt_alg = LBFGS(), options = Options(g_tol = 1e-14, iterations = 10000),
-                                                           verbose = false) where {T, SourceOfCoefficients}
+                                                           x0 = nothing, verbose = false) where {T, SourceOfCoefficients}
 
     if derivative_order != 1
         throw(ArgumentError("Derivative order $derivative_order not implemented."))
     end
+    if (length(nodes) < 2 * size_boundary + bandwidth || bandwidth < 1) && (bandwidth != length(nodes) - 1)
+        throw(ArgumentError("2 * size_boundary + bandwidth = $(2 * size_boundary + bandwidth) needs to be smaller than or equal to N = $(length(nodes)) and bandwidth = $bandwidth needs to be at least 1."))
+    end
     sort!(nodes)
-    weights, D = construct_function_space_operator(basis_functions, nodes, source; opt_alg = opt_alg, options = options, verbose = verbose)
+    weights, D = construct_function_space_operator(basis_functions, nodes, source;
+                                                   bandwidth, size_boundary, different_values, opt_alg,
+                                                   options, x0, verbose)
     return MatrixDerivativeOperator(first(nodes), last(nodes), nodes, weights, D, accuracy_order, source)
 end
 
@@ -222,11 +350,13 @@ end
 
 function construct_function_space_operator(basis_functions, nodes,
                                            ::GlaubitzNordströmÖffner2023;
+                                           bandwidth = length(nodes) - 1,
+                                           size_boundary = 2 * bandwidth, different_values = true,
                                            opt_alg = LBFGS(), options = Options(g_tol = 1e-14, iterations = 10000),
-                                           verbose = false)
+                                           x0 = nothing, verbose = false)
     K = length(basis_functions)
     N = length(nodes)
-    L = div(N * (N - 1), 2)
+    L = get_nsigma(N, bandwidth, size_boundary, different_values)
     basis_functions_derivatives = [x -> ForwardDiff.derivative(basis_functions[i], x) for i in 1:K]
     basis_functions_orthonormalized, basis_functions_orthonormalized_derivatives = orthonormalize_gram_schmidt(basis_functions,
                                                                                                                basis_functions_derivatives,
@@ -246,19 +376,33 @@ function construct_function_space_operator(basis_functions, nodes,
     A = zeros(eltype(nodes), N, K)
     SV = zeros(eltype(nodes), N, K)
     PV_x = zeros(eltype(nodes), N, K)
+    S_cache = DiffCache(S)
+    A_cache = DiffCache(A)
+    SV_cache = DiffCache(SV)
+    PV_x_cache = DiffCache(PV_x)
     daij_dsigmak = zeros(eltype(nodes), N, K, L)
     daij_drhok = zeros(eltype(nodes), N, K, N)
-    p = (V, V_x, R, x_length, S, A, SV, PV_x, daij_dsigmak, daij_drhok)
+    p = (V, V_x, R, x_length, S_cache, A_cache, SV_cache, PV_x_cache, bandwidth, size_boundary, different_values, daij_dsigmak, daij_drhok)
 
-    x0 = zeros(L + N)
-    fg!(F, G, x) = optimization_function_and_grad!(F, G, x, p)
-    result = optimize(Optim.only_fg!(fg!), x0, opt_alg, options)
+    if isnothing(x0)
+        x0 = [zeros(L); invsig.(1/N * ones(N))]
+    else
+        @assert length(x0) == L + N "Initial guess has be L + N = $(L + N) long"
+    end
+
+    if bandwidth == N - 1
+        fg!(F, G, x) = optimization_function_and_grad!(F, G, x, p)
+        result = optimize(Optim.only_fg!(fg!), x0, opt_alg, options)
+    else
+        f(x) = optimization_function(x, p)
+        result = optimize(f, x0, opt_alg, options, autodiff = :forward)
+    end
     verbose && display(result)
 
     x = minimizer(result)
     sigma = x[1:L]
     rho = x[(L + 1):end]
-    S = create_S(sigma, N)
+    S = create_S(sigma, N, bandwidth, size_boundary, different_values)
     P = create_P(rho, x_length)
     weights = diag(P)
     Q = S + B/2
@@ -266,13 +410,35 @@ function construct_function_space_operator(basis_functions, nodes,
     return weights, D
 end
 
+@views function optimization_function(x, p)
+    V, V_x, R, x_length, S_cache, A_cache, SV_cache, PV_x_cache, bandwidth, size_boundary, different_values = p
+    S = get_tmp(S_cache, x)
+    A = get_tmp(A_cache, x)
+    SV = get_tmp(SV_cache, x)
+    PV_x = get_tmp(PV_x_cache, x)
+    (N, _) = size(R)
+    L = get_nsigma(N, bandwidth, size_boundary, different_values)
+    sigma = x[1:L]
+    rho = x[(L + 1):end]
+    set_S!(S, sigma, N, bandwidth, size_boundary, different_values)
+    P = create_P(rho, x_length)
+    mul!(SV, S, V)
+    mul!(PV_x, P, V_x)
+    @. A = SV - PV_x + R
+    return norm(A)^2
+end
+
 @views function optimization_function_and_grad!(F, G, x, p)
-    V, V_x, R, x_length, S, A, SV, PV_x, daij_dsigmak, daij_drhok = p
+    V, V_x, R, x_length, S_cache, A_cache, SV_cache, PV_x_cache, bandwidth, _, _, daij_dsigmak, daij_drhok = p
+    S = get_tmp(S_cache, x)
+    A = get_tmp(A_cache, x)
+    SV = get_tmp(SV_cache, x)
+    PV_x = get_tmp(PV_x_cache, x)
     (N, _) = size(R)
     L = div(N * (N - 1), 2)
     sigma = x[1:L]
     rho = x[(L + 1):end]
-    set_S!(S, sigma, N)
+    set_S!(S, sigma, N, bandwidth)
     P = create_P(rho, x_length)
     mul!(SV, S, V)
     mul!(PV_x, P, V_x)
