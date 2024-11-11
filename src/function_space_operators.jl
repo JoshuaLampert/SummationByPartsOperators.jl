@@ -61,7 +61,7 @@ boundary blocks of the operator, where the default of `bandwidth` is set to `len
 i.e., a dense operator (in this case `size_boundary` is ignored). To construct a sparse operator, you can set the
 bandwidth to a smaller value, such that `2 * size_boundary + bandwidth < length(nodes)`, which is a
 requirement for the boundary blocks in the upper left and lower right of the resulting operator.
-If `different_values` is set to `true` all the entries in the upper right triangle of S (the set_skew_symmetric
+If `different_values` is set to `true` all the entries in the upper right triangle of S (the skew symmetric
 part of D) are different, which is generally meaningful for non-equidistant nodes and general bases, if it
 is `false` the entries of the stencil are repeated in the central part and the two boundary closures share
 their values (makes sense for uniformly distributed nodes and, e.g., a polynomial basis). The keyword
@@ -288,7 +288,7 @@ is set to `length(nodes) - 1`, i.e., dense operators (in this case `size_boundar
 construct sparse operators, you can set the bandwidth to a smaller value, such that
 `2 * size_boundary + bandwidth < length(nodes)`, which is a requirement for the boundary blocks in
 the upper left and lower right of the resulting operator. If `different_values` is set to `true` all
-the entries in the upper right triangle of all matrices S (the set_skew_symmetric parts of the
+the entries in the upper right triangle of all matrices S (the skew symmetric parts of the
 differentiation matrices D) are different, which is generally meaningful for non-equidistant nodes and
 general bases, if it is `false` the entries of the stencil are repeated in the central part and the
 two boundary closures share their values (makes sense for uniformly distributed nodes and, e.g., a
