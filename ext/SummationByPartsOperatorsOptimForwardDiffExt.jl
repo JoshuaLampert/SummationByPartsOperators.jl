@@ -5,6 +5,7 @@ import ForwardDiff
 
 using SummationByPartsOperators: SummationByPartsOperators, GlaubitzNordströmÖffner2023, GlaubitzIskeLampertÖffner2024,
                                  MatrixDerivativeOperator, MultidimensionalFunctionSpaceOperator
+using SummationByPartsOperators: get_nsigma # TODO: Only temporary
 using LinearAlgebra: Diagonal, LowerTriangular, dot, diag, norm, mul!
 using SparseArrays: spzeros
 using PreallocationTools: DiffCache, get_tmp
@@ -151,13 +152,13 @@ function set_B!(B, phi, normals, on_boundary, i)
             B[k, k] = phi[j] * normals[j][i]
             j += 1
         else
-            B[k, k] = 0.0
+            B[k, k] = zero(eltype(phi))
         end
     end
 end
 
 
-function get_nsigma(N, bandwidth, size_boundary = 2 * bandwidth, different_values = true)
+function SummationByPartsOperators.get_nsigma(N, bandwidth, size_boundary = 2 * bandwidth, different_values = true)
     if bandwidth == N - 1
         # whole upper right triangle
         return div(N * (N - 1), 2)
@@ -227,14 +228,14 @@ function construct_multidimensional_function_space_operator(basis_functions, nod
     C_cache = DiffCache(M)
     p = (V, V_xis, normals, moments, on_boundary, vol, S_cache, A_cache, SV_cache, PV_xi_cache, B_cache, BV_cache, C_cache, VTBV_cache, bandwidth, size_boundary, different_values)
     if isnothing(x0)
-        # x0 = zeros(d * L + N + N_boundary)
-        x0 = [zeros(d * L); invsig.(1/N * ones(N)); zeros(N_boundary)]
+        # x0 = zeros(T, d * L + N + N_boundary)
+        x0 = [zeros(T, d * L); invsig.(1/N * ones(T, N)); zeros(T, N_boundary)]
     else
         n_total = d * L + N + N_boundary
         @assert length(x0) == n_total "Initial guess has be d * L + N + N_boundary = $n_total long"
     end
 
-    f(x) = multidimensional_optimization_function(x, p)
+    f(x) = SummationByPartsOperators.multidimensional_optimization_function(x, p)
     result = optimize(f, x0, opt_alg, options; autodiff = :forward)
     verbose && display(result)
 
@@ -255,7 +256,7 @@ function construct_multidimensional_function_space_operator(basis_functions, nod
     return weights, weights_boundary, Ds
 end
 
-@views function multidimensional_optimization_function(x, p)
+@views function SummationByPartsOperators.multidimensional_optimization_function(x, p)
     V, V_xis, normals, moments, on_boundary, vol, S_cache, A_cache, SV_cache, PV_xi_cache, B_cache, BV_cache, C_cache, VTBV_cache, bandwidth, size_boundary, different_values = p
     S = get_tmp(S_cache, x)
     A = get_tmp(A_cache, x)

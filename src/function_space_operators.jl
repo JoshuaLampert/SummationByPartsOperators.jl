@@ -308,3 +308,7 @@ See also [`GlaubitzIskeLampertÖffner2024`](@ref).
     This is an experimental feature and may change in future releases.
 """
 function multidimensional_function_space_operator end
+
+function multidimensional_optimization_function end
+
+function get_nsigma end
