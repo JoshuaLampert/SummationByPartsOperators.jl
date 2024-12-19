@@ -191,6 +191,9 @@ function SummationByPartsOperators.multidimensional_function_space_operator(basi
     if derivative_order != 1
         throw(ArgumentError("Derivative order $derivative_order not implemented."))
     end
+    if (length(nodes) < 2 * size_boundary + bandwidth || bandwidth < 1) && (bandwidth != length(nodes) - 1)
+        throw(ArgumentError("2 * size_boundary + bandwidth = $(2 * size_boundary + bandwidth) needs to be smaller than or equal to N = $(length(nodes)) and bandwidth = $bandwidth needs to be at least 1."))
+    end
     weights, weights_boundary, Ds = construct_multidimensional_function_space_operator(basis_functions, nodes, on_boundary, normals, moments, vol, source;
                                                                                        bandwidth, size_boundary, different_values,
                                                                                        opt_alg, options, x0, verbose)
@@ -237,7 +240,7 @@ function construct_multidimensional_function_space_operator(basis_functions, nod
 
     f(x) = SummationByPartsOperators.multidimensional_optimization_function(x, p)
     result = optimize(f, x0, opt_alg, options; autodiff = :forward)
-    verbose && display(result)
+    verbose && show(stdout, "text/plain", result)
 
     x = minimizer(result)
     rho = x[(end - N - N_boundary + 1):(end - N_boundary)]
