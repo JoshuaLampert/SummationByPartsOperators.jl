@@ -260,8 +260,10 @@ end
 """
     multidimensional_function_space_operator(basis_functions, nodes, on_boundary, normals, moments, vol, source;
                                              derivative_order = 1, accuracy_order = 0,
+                                             bandwidth = length(nodes) - 1, size_boundary = 2 * bandwidth,
+                                             different_values = true,
                                              opt_alg = Optim.LBFGS(), options = Optim.Options(g_tol = 1e-14, iterations = 10000),
-                                             verbose = false)
+                                             x0 = nothing, verbose = false)
 
 Construct a multidimensional operator that represents a first-derivative operator in a function
 space spanned by the `basis_functions`, which is an iterable of functions. The operator is constructed on the
