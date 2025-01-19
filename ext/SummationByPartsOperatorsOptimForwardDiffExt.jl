@@ -128,9 +128,14 @@ permute_rows_and_cols(P) = P[size(P, 1):-1:1, size(P, 2):-1:1]
     end
 end
 
-sig(x) = 1 / (1 + exp(-x))
-sig_deriv(x) = sig(x) * (1 - sig(x))
-invsig(p) = log(p / (1 - p))
+# sig(x) = 1 / (1 + exp(-x))
+# sig_deriv(x) = sig(x) * (1 - sig(x))
+# invsig(p) = log(p / (1 - p))
+
+# leading to softmax
+sig(x) = exp(x)
+sig_deriv(x) = exp(x)
+invsig(p) = log(p)
 
 function create_P(rho, vol)
     P = Diagonal(sig.(rho))
