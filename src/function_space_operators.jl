@@ -83,6 +83,7 @@ See also [`GlaubitzNordströmÖffner2023`](@ref).
 """
 function function_space_operator end
 
+function get_optimization_entries end
 
 """
     GlaubitzIskeLampertÖffner2024()
