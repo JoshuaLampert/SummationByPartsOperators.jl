@@ -7,7 +7,8 @@ xmax = 4.0
 vol = xmax - xmin
 N = 20
 verbose = false
-opt_kwargs = (; options=Optim.Options(g_tol=1e-16, iterations=50000, show_trace = true), opt_alg=BFGS())
+opt_kwargs = (; options = Optim.Options(g_tol = 1e-16, iterations = 50000),
+                opt_alg = BFGS())
 atol = 1e-13
 
 # helper functions
@@ -51,22 +52,26 @@ end
                 basis = [x -> x^i for i in 0:(n-1)]
                 nodes = collect(grid(D_legendre))
 
-                D = function_space_operator(basis, nodes, GlaubitzNordströmÖffner2023();
-                    verbose, opt_kwargs...)
-                @test isapprox(Matrix(D), Matrix(D_legendre); atol) # equal
-                @test isapprox(mass_matrix(D), mass_matrix(D_legendre); atol) # equal
+                @testset "function_space_operator" verbose = true begin
+                    D = function_space_operator(basis, nodes, GlaubitzNordströmÖffner2023();
+                                                verbose, opt_kwargs...)
+                    @test isapprox(Matrix(D), Matrix(D_legendre); atol) # equal
+                    @test isapprox(mass_matrix(D), mass_matrix(D_legendre); atol) # equal
+                end
 
-                basis = [x -> x[1]^i for i in 0:(n-1)]
-                nodes = SVector.(nodes)
-                on_boundary = [[true]; zeros(Bool, n - 2); [true]]
-                normals = [SVector(-1.0), SVector(1.0)]
-                moments = compute_moments(basis, nodes, normals)
-                D = multidimensional_function_space_operator(basis, nodes, on_boundary, normals, moments, vol,
-                                                             GlaubitzIskeLampertÖffner2024();
-                                                             verbose, opt_kwargs...)
-                @test isapprox(Matrix(D, 1), Matrix(D_legendre); atol) # equal
-                @test isapprox(mass_matrix(D), mass_matrix(D_legendre); atol) # equal
-                @test isapprox(mass_matrix_boundary(D, 1), compute_boundary_matrix(n); atol) # equal
+                @testset "multidimensional_function_space_operator" verbose = true begin
+                    basis = [x -> x[1]^i for i in 0:(n-1)]
+                    nodes = SVector.(nodes)
+                    on_boundary = [[true]; zeros(Bool, n - 2); [true]]
+                    normals = [SVector(-1.0), SVector(1.0)]
+                    moments = compute_moments(basis, nodes, normals)
+                    D = multidimensional_function_space_operator(basis, nodes, on_boundary, normals, moments, vol,
+                                                                GlaubitzIskeLampertÖffner2024();
+                                                                verbose, opt_kwargs...)
+                    @test isapprox(Matrix(D, 1), Matrix(D_legendre); atol) # equal
+                    @test isapprox(mass_matrix(D), mass_matrix(D_legendre); atol) # equal
+                    @test isapprox(mass_matrix_boundary(D, 1), compute_boundary_matrix(n); atol) # equal
+                end
             end
         end
     end

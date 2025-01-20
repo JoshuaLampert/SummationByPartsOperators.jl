@@ -286,7 +286,9 @@ end
         M = moments[i]
         V_xi = V_xis[i]
         sigma = x[(i - 1) * L + 1:(i * L)]
+        fill!(S, zero(eltype(S)))
         set_S!(S, sigma, N, bandwidth, size_boundary, different_values)
+        fill!(B, zero(eltype(B)))
         set_B!(B, phi, normals, on_boundary, i)
         mul!(SV, S, V)
         mul!(PV_xi, P, V_xi)
