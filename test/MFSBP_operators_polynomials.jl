@@ -19,8 +19,8 @@ function to_S(D)
 end
 
 function to_sigma_rho(x)
-    sigma = x[1:(end-N)]
-    rho = x[(end-N+1):end]
+    sigma = x[1:(end - N)]
+    rho = x[(end - N + 1):end]
     return sigma, rho
 end
 
@@ -66,8 +66,8 @@ end
                     normals = [SVector(-1.0), SVector(1.0)]
                     moments = compute_moments(basis, nodes, normals)
                     D = multidimensional_function_space_operator(basis, nodes, on_boundary, normals, moments, vol,
-                                                                GlaubitzIskeLampertÖffner2024();
-                                                                verbose, opt_kwargs...)
+                                                                 GlaubitzIskeLampertÖffner2024();
+                                                                 verbose, opt_kwargs...)
                     @test isapprox(Matrix(D, 1), Matrix(D_legendre); atol) # equal
                     @test isapprox(mass_matrix(D), mass_matrix(D_legendre); atol) # equal
                     @test isapprox(mass_matrix_boundary(D, 1), compute_boundary_matrix(n); atol) # equal
@@ -76,185 +76,405 @@ end
         end
     end
 
-    # @testset "MattssonNordström2004" verbose = true begin
-    #     source = MattssonNordström2004()
-    #     for p in [2, 4]
-    #         @testset "p = $p (equal)" verbose = true begin
-    #             D_poly = derivative_operator(source, 1, p, xmin, xmax, N)
-    #             basis = [x -> x^i for i in 0:div(p, 2)]
-    #             nodes = collect(grid(D_poly))
-    #             bandwidth = div(p, 2)
-    #             size_boundary = p
-    #             different_values = false
+    @testset "MattssonNordström2004" verbose = true begin
+        source = MattssonNordström2004()
+        for p in [2, 4]
+            @testset "p = $p (equal)" verbose = true begin
+                D_poly = derivative_operator(source, 1, p, xmin, xmax, N)
+                basis = [x -> x^i for i in 0:div(p, 2)]
+                nodes = collect(grid(D_poly))
+                bandwidth = div(p, 2)
+                size_boundary = p
+                different_values = false
 
-    #             D = function_space_operator(basis, nodes, GlaubitzNordströmÖffner2023();
-    #                 bandwidth, size_boundary, different_values, verbose, opt_kwargs...)
-    #             @test isapprox(Matrix(D), Matrix(D_poly); 1e-12) # equal
-    #             @test isapprox(mass_matrix(D), mass_matrix(D_poly); atol) # equal
-    #         end
+                @testset "function_space_operator" verbose = true begin
+                    D = function_space_operator(basis, nodes, GlaubitzNordströmÖffner2023();
+                                                bandwidth, size_boundary, different_values,
+                                                verbose, opt_kwargs...)
+                    @test isapprox(Matrix(D), Matrix(D_poly); 1e-12) # equal
+                    @test isapprox(mass_matrix(D), mass_matrix(D_poly); atol) # equal
+                end
 
-    #         @testset "p = $p with different_values = true (almost equal)" verbose = true begin
-    #             D_poly = derivative_operator(source, 1, p, xmin, xmax, N)
-    #             basis = [x -> x^i for i in 0:div(p, 2)]
-    #             nodes = collect(grid(D_poly))
-    #             bandwidth = div(p, 2)
-    #             size_boundary = p
-    #             different_values = true
+                @testset "multidimensional_function_space_operator" verbose = true begin
+                    basis = [x -> x[1]^i for i in 0:div(p, 2)]
+                    nodes = SVector.(nodes)
+                    on_boundary = [[true]; zeros(Bool, N - 2); [true]]
+                    normals = [SVector(-1.0), SVector(1.0)]
+                    moments = compute_moments(basis, nodes, normals)
+                    D = multidimensional_function_space_operator(basis, nodes, on_boundary, normals, moments, vol,
+                                                                 GlaubitzIskeLampertÖffner2024();
+                                                                 bandwidth, size_boundary, different_values,
+                                                                 verbose, opt_kwargs...)
+                    @test isapprox(Matrix(D, 1), Matrix(D_poly); atol) # equal
+                    @test isapprox(mass_matrix(D), mass_matrix(D_poly); atol) # equal
+                    @test isapprox(mass_matrix_boundary(D, 1), compute_boundary_matrix(N); atol) # equal
+                end
+            end
 
-    #             D = function_space_operator(basis, nodes, GlaubitzNordströmÖffner2023();
-    #                 bandwidth, size_boundary, different_values, verbose, opt_kwargs...)
-    #             @test isapprox(Matrix(D), Matrix(D_poly); atol = 1e-3) # almost equal
-    #             @test isapprox(mass_matrix(D), mass_matrix(D_poly); atol = 1e-4) # almost equal
+            @testset "p = $p with different_values = true (almost equal)" verbose = true begin
+                D_poly = derivative_operator(source, 1, p, xmin, xmax, N)
+                basis = [x -> x^i for i in 0:div(p, 2)]
+                nodes = collect(grid(D_poly))
+                bandwidth = div(p, 2)
+                size_boundary = p
+                different_values = true
 
-    #             x_poly = SummationByPartsOperators.get_optimization_entries(D_poly; bandwidth, size_boundary, different_values)
-    #             D = function_space_operator(basis, nodes, GlaubitzNordströmÖffner2023();
-    #                 bandwidth, size_boundary, different_values, verbose, opt_kwargs...,
-    #                 x0=x_poly)
-    #             @test isapprox(Matrix(D), Matrix(D_poly); atol) # equal
-    #             @test isapprox(mass_matrix(D), mass_matrix(D_poly); atol) # equal
-    #             x = SummationByPartsOperators.get_optimization_entries(D; bandwidth, size_boundary, different_values)
-    #             @test isapprox(x, x_poly; atol)
-    #         end
-    #     end
+                @testset "function_space_operator" verbose = true begin
+                    D = function_space_operator(basis, nodes, GlaubitzNordströmÖffner2023();
+                                                bandwidth, size_boundary, different_values,
+                                                verbose, opt_kwargs...)
+                    @test isapprox(Matrix(D), Matrix(D_poly); atol = 1e-3) # almost equal
+                    @test isapprox(mass_matrix(D), mass_matrix(D_poly); atol = 1e-4) # almost equal
 
-    #     @testset "p = 6 (not equal)" verbose = true begin
-    #         p = 6
-    #         D_poly = derivative_operator(source, 1, p, xmin, xmax, N)
-    #         basis = [x -> x^i for i in 0:div(p, 2)]
-    #         nodes = collect(grid(D_poly))
-    #         bandwidth = div(p, 2)
-    #         size_boundary = p
-    #         different_values = false
+                    x_poly = SummationByPartsOperators.get_optimization_entries(D_poly; bandwidth, size_boundary, different_values)
+                    D = function_space_operator(basis, nodes, GlaubitzNordströmÖffner2023();
+                                                bandwidth, size_boundary, different_values,
+                                                verbose, opt_kwargs...,
+                                                x0 = x_poly)
+                    @test isapprox(Matrix(D), Matrix(D_poly); atol) # equal
+                    @test isapprox(mass_matrix(D), mass_matrix(D_poly); atol) # equal
+                    x = SummationByPartsOperators.get_optimization_entries(D; bandwidth, size_boundary, different_values)
+                    @test isapprox(x, x_poly; atol)
+                end
 
-    #         D = function_space_operator(basis, nodes, GlaubitzNordströmÖffner2023();
-    #             bandwidth, size_boundary, different_values, verbose, opt_kwargs...)
-    #         @test isapprox(sum(abs.(Matrix(D) - Matrix(D_poly))), 65.95363412991277; atol) # not equal
-    #         @test isapprox(mass_matrix(D), mass_matrix(D_poly); atol) # equal
+                @testset "multidimensional_function_space_operator" verbose = true begin
+                    basis = [x -> x[1]^i for i in 0:div(p, 2)]
+                    nodes = SVector.(nodes)
+                    on_boundary = [[true]; zeros(Bool, N - 2); [true]]
+                    normals = [SVector(-1.0), SVector(1.0)]
+                    moments = compute_moments(basis, nodes, normals)
+                    D = multidimensional_function_space_operator(basis, nodes, on_boundary, normals, moments, vol,
+                                                                 GlaubitzIskeLampertÖffner2024();
+                                                                 bandwidth, size_boundary, different_values,
+                                                                 verbose, opt_kwargs...)
+                    @test isapprox(Matrix(D, 1), Matrix(D_poly); atol = 1e-1) # almost equal
+                    @test isapprox(mass_matrix(D), mass_matrix(D_poly); atol = 1e-2) # almost equal
+                    @test isapprox(mass_matrix_boundary(D, 1), compute_boundary_matrix(N); atol) # equal
 
-    #         x_poly = SummationByPartsOperators.get_optimization_entries(D_poly; bandwidth, size_boundary)
-    #         D = function_space_operator(basis, nodes, GlaubitzNordströmÖffner2023();
-    #             bandwidth, size_boundary, different_values, verbose, opt_kwargs...,
-    #             x0=x_poly)
-    #         @test isapprox(Matrix(D), Matrix(D_poly); atol) # equal
-    #         @test isapprox(mass_matrix(D), mass_matrix(D_poly); atol) # equal
-    #         x = SummationByPartsOperators.get_optimization_entries(D; bandwidth, size_boundary)
-    #         @test isapprox(x, x_poly; atol)
-    #     end
+                    x_poly = SummationByPartsOperators.get_multidimensional_optimization_entries(D_poly; bandwidth, size_boundary, different_values)
+                    D = multidimensional_function_space_operator(basis, nodes, on_boundary, normals, moments, vol,
+                                                                 GlaubitzIskeLampertÖffner2024();
+                                                                 bandwidth, size_boundary, different_values,
+                                                                 verbose, opt_kwargs...,
+                                                                 x0 = x_poly)
+                    @test isapprox(Matrix(D, 1), Matrix(D_poly); atol) # equal
+                    @test isapprox(mass_matrix(D), mass_matrix(D_poly); atol) # equal
+                    @test isapprox(mass_matrix_boundary(D, 1), compute_boundary_matrix(N); atol) # equal
+                    x = SummationByPartsOperators.get_multidimensional_optimization_entries(D; bandwidth, size_boundary, different_values)
+                    @test isapprox(x, x_poly; atol)
+                end
+            end
+        end
 
-    #     @testset "p = 6 with different_values = true (not equal)" verbose = true begin
-    #         p = 6
-    #         D_poly = derivative_operator(source, 1, p, xmin, xmax, N)
-    #         basis = [x -> x^i for i in 0:div(p, 2)]
-    #         nodes = collect(grid(D_poly))
-    #         bandwidth = div(p, 2)
-    #         size_boundary = p
-    #         different_values = true
+        @testset "p = 6 (not equal)" verbose = true begin
+            p = 6
+            D_poly = derivative_operator(source, 1, p, xmin, xmax, N)
+            basis = [x -> x^i for i in 0:div(p, 2)]
+            nodes = collect(grid(D_poly))
+            bandwidth = div(p, 2)
+            size_boundary = p
+            different_values = false
 
-    #         D = function_space_operator(basis, nodes, GlaubitzNordströmÖffner2023();
-    #             bandwidth, size_boundary, different_values, verbose, opt_kwargs...)
-    #         @test isapprox(sum(abs.(Matrix(D) - Matrix(D_poly))), 73.70706205045157; atol) # not equal
-    #         @test isapprox(sum(abs.(mass_matrix(D) - mass_matrix(D_poly))), 0.9210824640443097; atol) # not equal
+            @testset "function_space_operator" verbose = true begin
+                D = function_space_operator(basis, nodes, GlaubitzNordströmÖffner2023();
+                                            bandwidth, size_boundary, different_values,
+                                            verbose, opt_kwargs...)
+                @test isapprox(sum(abs.(Matrix(D) - Matrix(D_poly))), 65.95363413150588; atol) # not equal
+                @test isapprox(mass_matrix(D), mass_matrix(D_poly); atol) # equal
 
-    #         x_poly = SummationByPartsOperators.get_optimization_entries(D_poly; bandwidth, size_boundary, different_values)
-    #         D = function_space_operator(basis, nodes, GlaubitzNordströmÖffner2023();
-    #             bandwidth, size_boundary, different_values, verbose, opt_kwargs...,
-    #             x0=x_poly)
-    #         @test isapprox(Matrix(D), Matrix(D_poly); atol) # equal
-    #         @test isapprox(mass_matrix(D), mass_matrix(D_poly); atol) # equal
-    #         x = SummationByPartsOperators.get_optimization_entries(D; bandwidth, size_boundary, different_values)
-    #         @test isapprox(x, x_poly; atol)
-    #     end
-    # end
+                x_poly = SummationByPartsOperators.get_optimization_entries(D_poly; bandwidth, size_boundary)
+                D = function_space_operator(basis, nodes, GlaubitzNordströmÖffner2023();
+                                            bandwidth, size_boundary, different_values,
+                                            verbose, opt_kwargs...,
+                                            x0 = x_poly)
+                @test isapprox(Matrix(D), Matrix(D_poly); atol) # equal
+                @test isapprox(mass_matrix(D), mass_matrix(D_poly); atol) # equal
+                x = SummationByPartsOperators.get_optimization_entries(D; bandwidth, size_boundary)
+                @test isapprox(x, x_poly; atol)
+            end
 
-    # @testset "MattssonAlmquistVanDerWeide2018Minimal" verbose = true begin
-    #     source = MattssonAlmquistVanDerWeide2018Minimal()
-    #     @testset "p = 4 (equal)" verbose = true begin
-    #         p = 4
-    #         D_poly = derivative_operator(source, 1, p, xmin, xmax, N)
-    #         basis = [x -> x^i for i in 0:div(p, 2)]
-    #         nodes = collect(grid(D_poly))
-    #         bandwidth = div(p, 2)
-    #         size_boundary = p
-    #         different_values = false
+            @testset "multidimensional_function_space_operator" verbose = true begin
+                basis = [x -> x[1]^i for i in 0:div(p, 2)]
+                nodes = SVector.(nodes)
+                on_boundary = [[true]; zeros(Bool, N - 2); [true]]
+                normals = [SVector(-1.0), SVector(1.0)]
+                moments = compute_moments(basis, nodes, normals)
+                D = multidimensional_function_space_operator(basis, nodes, on_boundary, normals, moments, vol,
+                                                             GlaubitzIskeLampertÖffner2024();
+                                                             bandwidth, size_boundary, different_values,
+                                                             verbose, opt_kwargs...)
+                @test isapprox(sum(abs.(Matrix(D, 1) - Matrix(D_poly))), 65.95363412995373; atol) # not equal
+                @test isapprox(mass_matrix(D), mass_matrix(D_poly)) # equal
+                @test isapprox(mass_matrix_boundary(D, 1), compute_boundary_matrix(N); atol) # equal
 
-    #         D = function_space_operator(basis, nodes, GlaubitzNordströmÖffner2023();
-    #             bandwidth, size_boundary, different_values, verbose, opt_kwargs...)
-    #         @test isapprox(Matrix(D), Matrix(D_poly); atol = 1e-10) # equal
-    #         @test isapprox(mass_matrix(D), mass_matrix(D_poly); atol = 1e-12) # equal
-    #     end
+                x_poly = SummationByPartsOperators.get_multidimensional_optimization_entries(D_poly; bandwidth, size_boundary, different_values)
+                D = multidimensional_function_space_operator(basis, nodes, on_boundary, normals, moments, vol,
+                                                             GlaubitzIskeLampertÖffner2024();
+                                                             bandwidth, size_boundary, different_values,
+                                                             verbose, opt_kwargs...,
+                                                             x0 = x_poly)
+                @test isapprox(Matrix(D, 1), Matrix(D_poly); atol) # equal
+                @test isapprox(mass_matrix(D), mass_matrix(D_poly); atol) # equal
+                @test isapprox(mass_matrix_boundary(D, 1), compute_boundary_matrix(N); atol) # equal
+                x = SummationByPartsOperators.get_multidimensional_optimization_entries(D; bandwidth, size_boundary, different_values)
+                @test isapprox(x, x_poly; atol)
+            end
+        end
 
-    #     @testset "p = 4 with different_values = true (almost equal)" verbose = true begin
-    #         p = 4
-    #         D_poly = derivative_operator(source, 1, p, xmin, xmax, N)
-    #         basis = [x -> x^i for i in 0:div(p, 2)]
-    #         nodes = collect(grid(D_poly))
-    #         bandwidth = div(p, 2)
-    #         size_boundary = p
-    #         different_values = true
+        @testset "p = 6 with different_values = true (not equal)" verbose = true begin
+            p = 6
+            D_poly = derivative_operator(source, 1, p, xmin, xmax, N)
+            basis = [x -> x^i for i in 0:div(p, 2)]
+            nodes = collect(grid(D_poly))
+            bandwidth = div(p, 2)
+            size_boundary = p
+            different_values = true
 
-    #         D = function_space_operator(basis, nodes, GlaubitzNordströmÖffner2023();
-    #             bandwidth, size_boundary, different_values, verbose, opt_kwargs...)
-    #         @test isapprox(Matrix(D), Matrix(D_poly); atol = 1e-3) # almost equal
-    #         @test isapprox(mass_matrix(D), mass_matrix(D_poly); atol = 1e-4) # almost equal
+            @testset "function_space_operator" verbose = true begin
+                D = function_space_operator(basis, nodes, GlaubitzNordströmÖffner2023();
+                                            bandwidth, size_boundary, different_values, verbose, opt_kwargs...)
+                @test isapprox(sum(abs.(Matrix(D) - Matrix(D_poly))), 73.46652200054294; atol) # not equal
+                @test isapprox(sum(abs.(mass_matrix(D) - mass_matrix(D_poly))), 0.9001684652620291; atol) # not equal
 
-    #         x_poly = SummationByPartsOperators.get_optimization_entries(D_poly; bandwidth, size_boundary, different_values)
-    #         D = function_space_operator(basis, nodes, GlaubitzNordströmÖffner2023();
-    #             bandwidth, size_boundary, different_values, verbose, opt_kwargs...,
-    #             x0=x_poly)
-    #         @test isapprox(Matrix(D), Matrix(D_poly); atol = 1e-11) # equal
-    #         @test isapprox(mass_matrix(D), mass_matrix(D_poly); atol) # equal
-    #         x = SummationByPartsOperators.get_optimization_entries(D; bandwidth, size_boundary, different_values)
-    #         @test isapprox(x, x_poly; atol = 1e-12)
-    #     end
+                x_poly = SummationByPartsOperators.get_optimization_entries(D_poly; bandwidth, size_boundary, different_values)
+                D = function_space_operator(basis, nodes, GlaubitzNordströmÖffner2023();
+                                            bandwidth, size_boundary, different_values, verbose, opt_kwargs...,
+                                            x0 = x_poly)
+                @test isapprox(Matrix(D), Matrix(D_poly); atol) # equal
+                @test isapprox(mass_matrix(D), mass_matrix(D_poly); atol) # equal
+                x = SummationByPartsOperators.get_optimization_entries(D; bandwidth, size_boundary, different_values)
+                @test isapprox(x, x_poly; atol)
+            end
 
-    #     @testset "p = 6 (not equal)" verbose = true begin
-    #         p = 6
-    #         D_poly = derivative_operator(source, 1, p, xmin, xmax, N)
-    #         basis = [x -> x^i for i in 0:div(p, 2)]
-    #         nodes = collect(grid(D_poly))
-    #         bandwidth = div(p, 2)
-    #         size_boundary = p
-    #         different_values = false
+            @testset "multidimensional_function_space_operator" verbose = true begin
+                basis = [x -> x[1]^i for i in 0:div(p, 2)]
+                nodes = SVector.(nodes)
+                on_boundary = [[true]; zeros(Bool, N - 2); [true]]
+                normals = [SVector(-1.0), SVector(1.0)]
+                moments = compute_moments(basis, nodes, normals)
+                D = multidimensional_function_space_operator(basis, nodes, on_boundary, normals, moments, vol,
+                                                             GlaubitzIskeLampertÖffner2024();
+                                                             bandwidth, size_boundary, different_values,
+                                                             verbose, opt_kwargs...)
+                @test isapprox(sum(abs.(Matrix(D, 1) - Matrix(D_poly))), 110.71611497448345; atol) # not equal
+                @test isapprox(sum(abs.(mass_matrix(D) - mass_matrix(D_poly))), 1.3990176657854683; atol) # not equal
+                @test isapprox(mass_matrix_boundary(D, 1), compute_boundary_matrix(N); atol) # equal
 
-    #         D = function_space_operator(basis, nodes, GlaubitzNordströmÖffner2023();
-    #             bandwidth, size_boundary, different_values, verbose, opt_kwargs...)
-    #         @test isapprox(sum(abs.(Matrix(D) - Matrix(D_poly))), 67.83380575751357; atol) # not equal
-    #         @test isapprox(mass_matrix(D), mass_matrix(D_poly); atol) # equal
+                x_poly = SummationByPartsOperators.get_multidimensional_optimization_entries(D_poly; bandwidth, size_boundary, different_values)
+                D = multidimensional_function_space_operator(basis, nodes, on_boundary, normals, moments, vol,
+                                                             GlaubitzIskeLampertÖffner2024();
+                                                             bandwidth, size_boundary, different_values,
+                                                             verbose, opt_kwargs...,
+                                                             x0 = x_poly)
+                @test isapprox(Matrix(D, 1), Matrix(D_poly); atol) # equal
+                @test isapprox(mass_matrix(D), mass_matrix(D_poly); atol) # equal
+                @test isapprox(mass_matrix_boundary(D, 1), compute_boundary_matrix(N); atol) # equal
+                x = SummationByPartsOperators.get_multidimensional_optimization_entries(D; bandwidth, size_boundary, different_values)
+                @test isapprox(x, x_poly; atol)
+            end
+        end
+    end
 
-    #         x_poly = SummationByPartsOperators.get_optimization_entries(D_poly; bandwidth, size_boundary)
-    #         D = function_space_operator(basis, nodes, GlaubitzNordströmÖffner2023();
-    #             bandwidth, size_boundary, different_values, verbose, opt_kwargs...,
-    #             x0=x_poly)
-    #         @test isapprox(Matrix(D), Matrix(D_poly); atol = 1e-12) # equal
-    #         @test isapprox(mass_matrix(D), mass_matrix(D_poly); atol) # equal
-    #         x = SummationByPartsOperators.get_optimization_entries(D; bandwidth, size_boundary)
-    #         @test isapprox(x, x_poly; atol)
-    #     end
+    @testset "MattssonAlmquistVanDerWeide2018Minimal" verbose = true begin
+        source = MattssonAlmquistVanDerWeide2018Minimal()
+        @testset "p = 4 (equal)" verbose = true begin
+            p = 4
+            D_poly = derivative_operator(source, 1, p, xmin, xmax, N)
+            basis = [x -> x^i for i in 0:div(p, 2)]
+            nodes = collect(grid(D_poly))
+            bandwidth = div(p, 2)
+            size_boundary = p
+            different_values = false
 
-    #     @testset "p = 6 with different_values = true (not equal)" verbose = true begin
-    #         p = 6
-    #         D_poly = derivative_operator(source, 1, p, xmin, xmax, N)
-    #         basis = [x -> x^i for i in 0:div(p, 2)]
-    #         nodes = collect(grid(D_poly))
-    #         bandwidth = div(p, 2)
-    #         size_boundary = p
-    #         different_values = true
+            @testset "function_space_operator" verbose = true begin
+                D = function_space_operator(basis, nodes, GlaubitzNordströmÖffner2023();
+                                            bandwidth, size_boundary, different_values,
+                                            verbose, opt_kwargs...)
+                @test isapprox(Matrix(D), Matrix(D_poly); atol = 1e-10) # equal
+                @test isapprox(mass_matrix(D), mass_matrix(D_poly); atol = 1e-12) # equal
+            end
 
-    #         D = function_space_operator(basis, nodes, GlaubitzNordströmÖffner2023();
-    #             bandwidth, size_boundary, different_values, verbose, opt_kwargs...)
-    #         @test isapprox(sum(abs.(Matrix(D) - Matrix(D_poly))), 84.95532448062654; atol) # not equal
-    #         @test isapprox(sum(abs.(mass_matrix(D) - mass_matrix(D_poly))), 0.8969276569183385; atol) # not equal
+            @testset "multidimensional_function_space_operator" verbose = true begin
+                basis = [x -> x[1]^i for i in 0:div(p, 2)]
+                nodes = SVector.(nodes)
+                on_boundary = [[true]; zeros(Bool, N - 2); [true]]
+                normals = [SVector(-1.0), SVector(1.0)]
+                moments = compute_moments(basis, nodes, normals)
+                D = multidimensional_function_space_operator(basis, nodes, on_boundary, normals, moments, vol,
+                                                             GlaubitzIskeLampertÖffner2024();
+                                                             bandwidth, size_boundary, different_values,
+                                                             verbose, opt_kwargs...)
+                @test isapprox(Matrix(D, 1), Matrix(D_poly); 1e-12) # equal
+                @test isapprox(mass_matrix(D), mass_matrix(D_poly); 1e-12) # equal
+                @test isapprox(mass_matrix_boundary(D, 1), compute_boundary_matrix(N); atol) # equal
+            end
+        end
 
-    #         x_poly = SummationByPartsOperators.get_optimization_entries(D_poly; bandwidth, size_boundary, different_values)
-    #         D = function_space_operator(basis, nodes, GlaubitzNordströmÖffner2023();
-    #             bandwidth, size_boundary, different_values, verbose, opt_kwargs...,
-    #             x0=x_poly)
-    #         @test isapprox(Matrix(D), Matrix(D_poly); atol = 1e-12) # equal
-    #         @test isapprox(mass_matrix(D), mass_matrix(D_poly); atol) # equal
-    #         x = SummationByPartsOperators.get_optimization_entries(D; bandwidth, size_boundary, different_values)
-    #         @test isapprox(x, x_poly; atol)
-    #     end
-    # end
+        @testset "p = 4 with different_values = true (almost equal)" verbose = true begin
+            p = 4
+            D_poly = derivative_operator(source, 1, p, xmin, xmax, N)
+            basis = [x -> x^i for i in 0:div(p, 2)]
+            nodes = collect(grid(D_poly))
+            bandwidth = div(p, 2)
+            size_boundary = p
+            different_values = true
+
+            @testset "function_space_operator" verbose = true begin
+                D = function_space_operator(basis, nodes, GlaubitzNordströmÖffner2023();
+                                            bandwidth, size_boundary, different_values,
+                                            verbose, opt_kwargs...)
+                @test isapprox(Matrix(D), Matrix(D_poly); atol = 1e-3) # almost equal
+                @test isapprox(mass_matrix(D), mass_matrix(D_poly); atol = 1e-4) # almost equal
+
+                x_poly = SummationByPartsOperators.get_optimization_entries(D_poly; bandwidth, size_boundary, different_values)
+                D = function_space_operator(basis, nodes, GlaubitzNordströmÖffner2023();
+                                            bandwidth, size_boundary, different_values,
+                                            verbose, opt_kwargs...,
+                                            x0 = x_poly)
+                @test isapprox(Matrix(D), Matrix(D_poly); atol = 1e-11) # equal
+                @test isapprox(mass_matrix(D), mass_matrix(D_poly); atol) # equal
+                x = SummationByPartsOperators.get_optimization_entries(D; bandwidth, size_boundary, different_values)
+                @test isapprox(x, x_poly; atol = 1e-12)
+            end
+
+            @testset "multidimensional_function_space_operator" verbose = true begin
+                basis = [x -> x[1]^i for i in 0:div(p, 2)]
+                nodes = SVector.(nodes)
+                on_boundary = [[true]; zeros(Bool, N - 2); [true]]
+                normals = [SVector(-1.0), SVector(1.0)]
+                moments = compute_moments(basis, nodes, normals)
+                D = multidimensional_function_space_operator(basis, nodes, on_boundary, normals, moments, vol,
+                                                            GlaubitzIskeLampertÖffner2024();
+                                                            bandwidth, size_boundary, different_values,
+                                                            verbose, opt_kwargs...)
+                @test isapprox(Matrix(D, 1), Matrix(D_poly); atol = 1.0) # almost equal
+                @test isapprox(mass_matrix(D), mass_matrix(D_poly); atol = 1e-1) # almost equal
+                @test isapprox(mass_matrix_boundary(D, 1), compute_boundary_matrix(N); atol) # equal
+
+                x_poly = SummationByPartsOperators.get_multidimensional_optimization_entries(D_poly; bandwidth, size_boundary, different_values)
+                D = multidimensional_function_space_operator(basis, nodes, on_boundary, normals, moments, vol,
+                                                            GlaubitzIskeLampertÖffner2024();
+                                                            bandwidth, size_boundary, different_values,
+                                                            verbose, opt_kwargs...,
+                                                            x0 = x_poly)
+                @test isapprox(Matrix(D, 1), Matrix(D_poly); 1e-12) # equal
+                @test isapprox(mass_matrix(D), mass_matrix(D_poly); 1e-12) # equal
+                @test isapprox(mass_matrix_boundary(D, 1), compute_boundary_matrix(N); atol) # equal
+                x = SummationByPartsOperators.get_multidimensional_optimization_entries(D; bandwidth, size_boundary, different_values)
+                @test isapprox(x, x_poly; 1e-12)
+            end
+        end
+
+        @testset "p = 6 (not equal)" verbose = true begin
+            p = 6
+            D_poly = derivative_operator(source, 1, p, xmin, xmax, N)
+            basis = [x -> x^i for i in 0:div(p, 2)]
+            nodes = collect(grid(D_poly))
+            bandwidth = div(p, 2)
+            size_boundary = p
+            different_values = false
+
+            @testset "function_space_operator" verbose = true begin
+                D = function_space_operator(basis, nodes, GlaubitzNordströmÖffner2023();
+                                            bandwidth, size_boundary, different_values,
+                                            verbose, opt_kwargs...)
+                @test isapprox(sum(abs.(Matrix(D) - Matrix(D_poly))), 67.83380576402465; atol) # not equal
+                @test isapprox(mass_matrix(D), mass_matrix(D_poly); atol) # equal
+
+                x_poly = SummationByPartsOperators.get_optimization_entries(D_poly; bandwidth, size_boundary)
+                D = function_space_operator(basis, nodes, GlaubitzNordströmÖffner2023();
+                                            bandwidth, size_boundary, different_values,
+                                            verbose, opt_kwargs...,
+                                            x0 = x_poly)
+                @test isapprox(Matrix(D), Matrix(D_poly); atol = 1e-12) # equal
+                @test isapprox(mass_matrix(D), mass_matrix(D_poly); atol) # equal
+                x = SummationByPartsOperators.get_optimization_entries(D; bandwidth, size_boundary)
+                @test isapprox(x, x_poly; atol)
+            end
+
+            @testset "multidimensional_function_space_operator" verbose = true begin
+                basis = [x -> x[1]^i for i in 0:div(p, 2)]
+                nodes = SVector.(nodes)
+                on_boundary = [[true]; zeros(Bool, N - 2); [true]]
+                normals = [SVector(-1.0), SVector(1.0)]
+                moments = compute_moments(basis, nodes, normals)
+                D = multidimensional_function_space_operator(basis, nodes, on_boundary, normals, moments, vol,
+                                                             GlaubitzIskeLampertÖffner2024();
+                                                             bandwidth, size_boundary, different_values,
+                                                             verbose, opt_kwargs...)
+                @test isapprox(sum(abs.(Matrix(D, 1) - Matrix(D_poly))), 67.83380574798099; atol) # not equal
+                @test isapprox(mass_matrix(D), mass_matrix(D_poly); atol) # equal
+                @test isapprox(mass_matrix_boundary(D, 1), compute_boundary_matrix(N); atol) # equal
+
+                x_poly = SummationByPartsOperators.get_multidimensional_optimization_entries(D_poly; bandwidth, size_boundary, different_values)
+                D = multidimensional_function_space_operator(basis, nodes, on_boundary, normals, moments, vol,
+                                                             GlaubitzIskeLampertÖffner2024();
+                                                             bandwidth, size_boundary, different_values,
+                                                             verbose, opt_kwargs...,
+                                                             x0 = x_poly)
+                @test isapprox(Matrix(D, 1), Matrix(D_poly); atol) # equal
+                @test isapprox(mass_matrix(D), mass_matrix(D_poly); atol) # equal
+                @test isapprox(mass_matrix_boundary(D, 1), compute_boundary_matrix(N); atol) # equal
+                x = SummationByPartsOperators.get_multidimensional_optimization_entries(D; bandwidth, size_boundary, different_values)
+                @test isapprox(x, x_poly; atol)
+            end
+        end
+
+        @testset "p = 6 with different_values = true (not equal)" verbose = true begin
+            p = 6
+            D_poly = derivative_operator(source, 1, p, xmin, xmax, N)
+            basis = [x -> x^i for i in 0:div(p, 2)]
+            nodes = collect(grid(D_poly))
+            bandwidth = div(p, 2)
+            size_boundary = p
+            different_values = true
+
+            @testset "function_space_operator" verbose = true begin
+                D = function_space_operator(basis, nodes, GlaubitzNordströmÖffner2023();
+                                            bandwidth, size_boundary, different_values,
+                                            verbose, opt_kwargs...)
+                @test isapprox(sum(abs.(Matrix(D) - Matrix(D_poly))), 84.3543668148164; atol) # not equal
+                @test isapprox(sum(abs.(mass_matrix(D) - mass_matrix(D_poly))), 0.8601601363436975; atol) # not equal
+
+                x_poly = SummationByPartsOperators.get_optimization_entries(D_poly; bandwidth, size_boundary, different_values)
+                D = function_space_operator(basis, nodes, GlaubitzNordströmÖffner2023();
+                                            bandwidth, size_boundary, different_values,
+                                            verbose, opt_kwargs...,
+                                            x0 = x_poly)
+                @test isapprox(Matrix(D), Matrix(D_poly); atol = 1e-12) # equal
+                @test isapprox(mass_matrix(D), mass_matrix(D_poly); atol) # equal
+                x = SummationByPartsOperators.get_optimization_entries(D; bandwidth, size_boundary, different_values)
+                @test isapprox(x, x_poly; atol)
+            end
+
+            @testset "multidimensional_function_space_operator" verbose = true begin
+                basis = [x -> x[1]^i for i in 0:div(p, 2)]
+                nodes = SVector.(nodes)
+                on_boundary = [[true]; zeros(Bool, N - 2); [true]]
+                normals = [SVector(-1.0), SVector(1.0)]
+                moments = compute_moments(basis, nodes, normals)
+                D = multidimensional_function_space_operator(basis, nodes, on_boundary, normals, moments, vol,
+                                                             GlaubitzIskeLampertÖffner2024();
+                                                             bandwidth, size_boundary, different_values,
+                                                             verbose, opt_kwargs...)
+                @test isapprox(sum(abs.(Matrix(D, 1) - Matrix(D_poly))), 97.09483989061656; atol) # not equal
+                @test isapprox(sum(abs.(mass_matrix(D) - mass_matrix(D_poly))), 1.5677588546370986; atol) # not equal
+                @test isapprox(mass_matrix_boundary(D, 1), compute_boundary_matrix(N); atol) # equal
+
+                x_poly = SummationByPartsOperators.get_multidimensional_optimization_entries(D_poly; bandwidth, size_boundary, different_values)
+                D = multidimensional_function_space_operator(basis, nodes, on_boundary, normals, moments, vol,
+                                                             GlaubitzIskeLampertÖffner2024();
+                                                             bandwidth, size_boundary, different_values,
+                                                             verbose, opt_kwargs...,
+                                                             x0 = x_poly)
+                @test isapprox(Matrix(D, 1), Matrix(D_poly); atol) # equal
+                @test isapprox(mass_matrix(D), mass_matrix(D_poly); atol) # equal
+                @test isapprox(mass_matrix_boundary(D, 1), compute_boundary_matrix(N); atol) # equal
+                x = SummationByPartsOperators.get_multidimensional_optimization_entries(D; bandwidth, size_boundary, different_values)
+                @test isapprox(x, x_poly; atol)
+            end
+        end
+    end
 
     # @testset "MattssonAlmquistVanDerWeide2018Accurate" verbose = true begin
     #     source = MattssonAlmquistVanDerWeide2018Accurate()

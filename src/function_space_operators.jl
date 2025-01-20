@@ -315,3 +315,5 @@ function multidimensional_function_space_operator end
 function multidimensional_optimization_function end
 
 function get_nsigma end
+
+function get_multidimensional_optimization_entries end

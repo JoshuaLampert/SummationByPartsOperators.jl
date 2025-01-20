@@ -240,7 +240,7 @@ function construct_multidimensional_function_space_operator(basis_functions, nod
         x0 = [zeros(T, d * L); invsig.(1/N * ones(T, N)); zeros(T, N_boundary)]
     else
         n_total = d * L + N + N_boundary
-        @assert length(x0) == n_total "Initial guess has be d * L + N + N_boundary = $n_total long"
+        @assert length(x0) == n_total "Initial guess has be d * L + N + N_boundary = $n_total long, but got length $(length(x0))"
     end
 
     f(x) = SummationByPartsOperators.multidimensional_optimization_function(x, p)
@@ -564,7 +564,12 @@ function SummationByPartsOperators.get_optimization_entries(D;
     # if sig is the logistic function, inverting the normalized logistic function is harder, but this still works
     # (eventhough it is not the exaxt inverse)
     rho = invsig.(p)
-    Q = SummationByPartsOperators.mass_matrix(D) * Matrix(D)
+    Matrix_D = if D isa MultidimensionalFunctionSpaceOperator
+        Matrix(D, 1)
+    else
+        Matrix(D)
+    end
+    Q = SummationByPartsOperators.mass_matrix(D) * Matrix_D
     S = 0.5 * (Q - Q')
     N = size(D, 1)
     L = get_nsigma(N, b, c, different_values)
@@ -604,6 +609,26 @@ function SummationByPartsOperators.get_optimization_entries(D;
         end
     end
     return [sigma; rho]
+end
+
+# This only works if the operator is 1D!
+function SummationByPartsOperators.get_multidimensional_optimization_entries(D;
+                                                                             bandwidth = div(SummationByPartsOperators.accuracy_order(D), 2),
+                                                                             size_boundary = SummationByPartsOperators.lower_bandwidth(D) + 1,
+                                                                             different_values = false)
+    sigmarho = SummationByPartsOperators.get_optimization_entries(D; bandwidth, size_boundary, different_values)
+    phi = [1.0, 1.0]
+    return [sigmarho; phi]
+end
+
+# This only works if the operator is 1D!
+function SummationByPartsOperators.get_multidimensional_optimization_entries(D::MultidimensionalFunctionSpaceOperator;
+                                                                             bandwidth = div(SummationByPartsOperators.accuracy_order(D), 2),
+                                                                             size_boundary = SummationByPartsOperators.lower_bandwidth(D) + 1,
+                                                                             different_values = false)
+    sigmarho = SummationByPartsOperators.get_optimization_entries(D; bandwidth, size_boundary, different_values)
+    phi = D.weights_boundary
+    return [sigmarho; phi]
 end
 
 end # module
