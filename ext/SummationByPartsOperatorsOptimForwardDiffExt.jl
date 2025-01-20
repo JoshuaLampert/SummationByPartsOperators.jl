@@ -128,14 +128,14 @@ permute_rows_and_cols(P) = P[size(P, 1):-1:1, size(P, 2):-1:1]
     end
 end
 
-# sig(x) = 1 / (1 + exp(-x))
-# sig_deriv(x) = sig(x) * (1 - sig(x))
-# invsig(p) = log(p / (1 - p))
+sig(x) = 1 / (1 + exp(-x))
+sig_deriv(x) = sig(x) * (1 - sig(x))
+invsig(p) = log(p / (1 - p))
 
 # leading to softmax
-sig(x) = exp(x)
-sig_deriv(x) = exp(x)
-invsig(p) = log(p)
+# sig(x) = exp(x)
+# sig_deriv(x) = exp(x)
+# invsig(p) = log(p)
 
 function create_P(rho, vol)
     P = Diagonal(sig.(rho))
@@ -228,12 +228,12 @@ function construct_multidimensional_function_space_operator(basis_functions, nod
     M = zeros(T, K, K)
     S_cache = DiffCache(S)
     A_cache = DiffCache(A)
-    SV_cache = DiffCache(A)
-    PV_xi_cache = DiffCache(A)
-    B_cache = DiffCache(S)
-    BV_cache = DiffCache(A)
+    SV_cache = DiffCache(copy(A))
+    PV_xi_cache = DiffCache(copy(A))
+    B_cache = DiffCache(copy(S))
+    BV_cache = DiffCache(copy(A))
     VTBV_cache = DiffCache(M)
-    C_cache = DiffCache(M)
+    C_cache = DiffCache(copy(M))
     p = (V, V_xis, normals, moments, on_boundary, vol, S_cache, A_cache, SV_cache, PV_xi_cache, B_cache, BV_cache, C_cache, VTBV_cache, bandwidth, size_boundary, different_values)
     if isnothing(x0)
         # x0 = zeros(T, d * L + N + N_boundary)
@@ -294,7 +294,7 @@ end
         @. A = SV - PV_xi + 0.5 * BV
         mul!(VTBV, V', BV)
         @. C = VTBV - M
-        res += norm(A)^2 + norm(C)^2
+        res += sum(abs2, A) + sum(abs2, C)
     end
     return res
 end
