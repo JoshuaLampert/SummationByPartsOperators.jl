@@ -115,7 +115,7 @@ function Base.show(io::IO, D::MultidimensionalMatrixOperator)
         summary(io, D)
     else
         x = grid(D)
-        print(io, ndims(D), "-dimensional function space first-derivative operator {T=", eltype(D), "}")
+        print(io, ndims(D), "-dimensional matrix-based first-derivative operator {T=", eltype(D), "}")
         print(io, " on ", length(x), " nodes")
     end
 end
