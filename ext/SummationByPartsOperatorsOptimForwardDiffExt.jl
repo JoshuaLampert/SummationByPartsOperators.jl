@@ -4,7 +4,7 @@ using Optim: Optim, Options, LBFGS, optimize, minimizer
 import ForwardDiff
 
 using SummationByPartsOperators: SummationByPartsOperators, GlaubitzNordströmÖffner2023, GlaubitzIskeLampertÖffner2024,
-                                 MatrixDerivativeOperator, MultidimensionalFunctionSpaceOperator
+                                 MatrixDerivativeOperator, MultidimensionalMatrixOperator
 using SummationByPartsOperators: get_nsigma # TODO: Only temporary
 using LinearAlgebra: Diagonal, LowerTriangular, dot, diag, norm, mul!
 using SparseArrays: spzeros
@@ -202,7 +202,7 @@ function SummationByPartsOperators.multidimensional_function_space_operator(basi
     weights, weights_boundary, Ds = construct_multidimensional_function_space_operator(basis_functions, nodes, on_boundary, normals, moments, vol, source;
                                                                                        bandwidth, size_boundary, different_values,
                                                                                        opt_alg, options, x0, verbose)
-    return MultidimensionalFunctionSpaceOperator(nodes, on_boundary, normals, weights, weights_boundary, Ds, accuracy_order, source)
+    return MultidimensionalMatrixOperator(nodes, on_boundary, normals, weights, weights_boundary, Ds, accuracy_order, source)
 end
 
 function construct_multidimensional_function_space_operator(basis_functions, nodes, on_boundary, normals, moments, vol,
@@ -564,7 +564,7 @@ function SummationByPartsOperators.get_optimization_entries(D;
     # if sig is the logistic function, inverting the normalized logistic function is harder, but this still works
     # (eventhough it is not the exaxt inverse)
     rho = invsig.(p)
-    Matrix_D = if D isa MultidimensionalFunctionSpaceOperator
+    Matrix_D = if D isa MultidimensionalMatrixOperator
         Matrix(D, 1)
     else
         Matrix(D)
@@ -622,7 +622,7 @@ function SummationByPartsOperators.get_multidimensional_optimization_entries(D;
 end
 
 # This only works if the operator is 1D!
-function SummationByPartsOperators.get_multidimensional_optimization_entries(D::MultidimensionalFunctionSpaceOperator;
+function SummationByPartsOperators.get_multidimensional_optimization_entries(D::MultidimensionalMatrixOperator;
                                                                              bandwidth = div(SummationByPartsOperators.accuracy_order(D), 2),
                                                                              size_boundary = SummationByPartsOperators.lower_bandwidth(D) + 1,
                                                                              different_values = false)
