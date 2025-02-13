@@ -83,8 +83,6 @@ See also [`GlaubitzNordströmÖffner2023`](@ref).
 """
 function function_space_operator end
 
-function get_optimization_entries end
-
 """
     GlaubitzIskeLampertÖffner2024()
 
@@ -115,7 +113,7 @@ end
     multidimensional_function_space_operator(basis_functions, nodes, on_boundary, normals, moments, vol, source;
                                              derivative_order = 1, accuracy_order = 0,
                                              bandwidth = length(nodes) - 1, size_boundary = 2 * bandwidth,
-                                             different_values = true,
+                                             different_values = true, sparsity_pattern = nothing,
                                              opt_alg = Optim.LBFGS(), options = Optim.Options(g_tol = 1e-14, iterations = 10000),
                                              x0 = nothing, verbose = false)
 
@@ -138,7 +136,13 @@ guess for the optimization problem can be passed with the keyword argument `x0`,
 If `nothing` is passed, a default initial guess (zeros for the entries of the differentiation matrix and
 equal values for all the weights and boundary weights) is used.
 
-The keyword arguments `bandwidth` and `size_boundary` specifiy the bandwidth and the size of the
+There are two alternative ways to enforce sparsity of the resulting operator. The first is by passing
+a matrix `sparsity_pattern` that is a matrix of zeros and ones, where the ones indicate the non-zero
+entries of the operator. This matrix should be symmetric and have zeros on the diagonal. The second way
+is to use a banded-block structure for the operator as is common, e.g., in finite difference methods.
+See below for more details.
+
+The keyword arguments `bandwidth` and `size_boundary` specify the bandwidth and the size of the
 boundary blocks of the differentiation matrices in each direction, where the default of `bandwidth`
 is set to `length(nodes) - 1`, i.e., dense operators (in this case `size_boundary` is ignored). To
 construct sparse operators, you can set the bandwidth to a smaller value, such that
@@ -149,6 +153,8 @@ differentiation matrices D) are different, which is generally meaningful for non
 general bases, if it is `false` the entries of the stencil are repeated in the central part and the
 two boundary closures share their values (makes sense for uniformly distributed nodes and, e.g., a
 polynomial basis). The keyword argument `different_values` is ignored for dense operators.
+The parameters `bandwidth`, `size_boundary`, and `different_values` are only used if `sparsity_pattern`
+is not provided.
 
 The keyword argument `verbose` can be set to `true` to print information about the optimization process.
 
@@ -167,6 +173,11 @@ function multidimensional_function_space_operator end
 
 function multidimensional_optimization_function end
 
+# Just to be able to call them from outside
+function get_optimization_entries end
+
 function get_nsigma end
 
 function get_multidimensional_optimization_entries end
+
+function create_S end
