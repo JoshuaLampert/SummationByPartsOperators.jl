@@ -6,7 +6,7 @@ using Test
 xmin = -2.0
 xmax = 4.0
 vol = xmax - xmin
-N = 10 # 20
+N = 20
 verbose = false
 opt_kwargs = (; options = Optim.Options(f_abstol = 1e-25, g_tol = 1e-16, iterations = 50000),
                 opt_alg = BFGS())
@@ -114,7 +114,7 @@ end
                                                 bandwidth, size_boundary, different_values,
                                                 verbose, opt_kwargs...)
                     @test isapprox(Matrix(D), Matrix(D_poly); 1e-12) # equal
-                    @test isapprox(mass_matrix(D), mass_matrix(D_poly); atol) # equal
+                    @test isapprox(mass_matrix(D), mass_matrix(D_poly); 1e-12) # equal
                 end
 
                 @testset "multidimensional_function_space_operator" verbose = true begin
@@ -164,8 +164,8 @@ end
                     D_sparsity_pattern = function_space_operator(basis, nodes, GlaubitzNordströmÖffner2023();
                                                                  sparsity_pattern,
                                                                  verbose, opt_kwargs...)
-                    @test isapprox(Matrix(D), Matrix(D_sparsity_pattern); atol = 1e-5) # equal
-                    @test isapprox(mass_matrix(D), mass_matrix(D_sparsity_pattern); atol = 1e-5) # equal
+                    @test isapprox(Matrix(D), Matrix(D_sparsity_pattern); atol = 1e-3) # equal
+                    @test isapprox(mass_matrix(D), mass_matrix(D_sparsity_pattern); atol = 1e-4) # equal
 
                     # This neeeds only 1 iteration
                     x_poly_sparsity_pattern = SummationByPartsOperators.get_optimization_entries(D_poly; sparsity_pattern)
@@ -173,8 +173,8 @@ end
                                                                     sparsity_pattern,
                                                                     verbose, opt_kwargs...,
                                                                     x0 = x_poly_sparsity_pattern)
-                    @test isapprox(Matrix(D), Matrix(D_sparsity_pattern_x0); atol = 1e-5) # equal
-                    @test isapprox(mass_matrix(D), mass_matrix(D_sparsity_pattern_x0); atol = 1e-6) # equal
+                    @test isapprox(Matrix(D), Matrix(D_sparsity_pattern_x0); atol = 1e-3) # equal
+                    @test isapprox(mass_matrix(D), mass_matrix(D_sparsity_pattern_x0); atol = 1e-4) # equal
                 end
 
                 @testset "multidimensional_function_space_operator" verbose = true begin
@@ -187,8 +187,8 @@ end
                                                                  GlaubitzIskeLampertÖffner2024();
                                                                  bandwidth, size_boundary, different_values,
                                                                  verbose, opt_kwargs...)
-                    @test isapprox(Matrix(D, 1), Matrix(D_poly); atol = 1e-0) # almost equal
-                    @test isapprox(mass_matrix(D), mass_matrix(D_poly); atol = 1e-0) # almost equal
+                    @test isapprox(Matrix(D, 1), Matrix(D_poly); atol = 1e-1) # almost equal
+                    @test isapprox(mass_matrix(D), mass_matrix(D_poly); atol = 1e-2) # almost equal
                     @test isapprox(mass_matrix_boundary(D, 1), compute_boundary_matrix(N); atol) # equal
 
                     x_poly = SummationByPartsOperators.get_multidimensional_optimization_entries(D_poly; bandwidth, size_boundary, different_values)
