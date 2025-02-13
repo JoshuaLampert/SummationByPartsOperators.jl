@@ -164,8 +164,8 @@ end
                     D_sparsity_pattern = function_space_operator(basis, nodes, GlaubitzNordströmÖffner2023();
                                                                  sparsity_pattern,
                                                                  verbose, opt_kwargs...)
-                    @test isapprox(Matrix(D), Matrix(D_sparsity_pattern); atol = 1e-3) # equal
-                    @test isapprox(mass_matrix(D), mass_matrix(D_sparsity_pattern); atol = 1e-4) # equal
+                    @test isapprox(Matrix(D_sparsity_pattern), Matrix(D_poly); atol = 1e-3) # almost equal
+                    @test isapprox(mass_matrix(D_sparsity_pattern), mass_matrix(D_poly); atol = 1e-4) # almost equal
 
                     # This neeeds only 1 iteration
                     x_poly_sparsity_pattern = SummationByPartsOperators.get_optimization_entries(D_poly; sparsity_pattern)
@@ -173,8 +173,8 @@ end
                                                                     sparsity_pattern,
                                                                     verbose, opt_kwargs...,
                                                                     x0 = x_poly_sparsity_pattern)
-                    @test isapprox(Matrix(D), Matrix(D_sparsity_pattern_x0); atol = 1e-3) # equal
-                    @test isapprox(mass_matrix(D), mass_matrix(D_sparsity_pattern_x0); atol = 1e-4) # equal
+                    @test isapprox(Matrix(D_sparsity_pattern_x0), Matrix(D_poly); atol) # equal
+                    @test isapprox(mass_matrix(D_sparsity_pattern_x0), mass_matrix(D_poly); atol) # equal
                 end
 
                 @testset "multidimensional_function_space_operator" verbose = true begin
