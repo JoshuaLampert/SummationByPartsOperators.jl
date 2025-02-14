@@ -4,7 +4,7 @@ using Optim: Optim, Options, LBFGS, optimize, minimizer
 import ForwardDiff
 
 using SummationByPartsOperators: SummationByPartsOperators, GlaubitzNordströmÖffner2023, GlaubitzIskeLampertÖffner2024,
-                                 MatrixDerivativeOperator, MultidimensionalMatrixOperator
+                                 MatrixDerivativeOperator, MultidimensionalMatrixDerivativeOperator
 using SummationByPartsOperators: get_nsigma # TODO: Only temporary
 using LinearAlgebra: Diagonal, UpperTriangular, LowerTriangular, dot, diag, norm, mul!, issymmetric
 using SparseArrays: spzeros
@@ -221,25 +221,33 @@ function SummationByPartsOperators.multidimensional_function_space_operator(basi
                                                                             source::SourceOfCoefficients;
                                                                             derivative_order = 1, accuracy_order = 0, bandwidth = length(nodes) - 1,
                                                                             size_boundary = 2 * bandwidth, different_values = true,
+                                                                            sparsity_pattern = nothing,
                                                                             opt_alg = LBFGS(), options = Options(g_tol = 1e-14, iterations = 10000),
                                                                             x0 = nothing, verbose = false) where {SourceOfCoefficients}
 
     if derivative_order != 1
         throw(ArgumentError("Derivative order $derivative_order not implemented."))
     end
+    if !isnothing(sparsity_pattern)
+        if !(sparsity_pattern isa UpperTriangular || issymmetric(sparsity_pattern)) || !all(diag(sparsity_pattern) .== 0)
+            throw(ArgumentError("Sparsity pattern has to be symmetric with all diagonal entries being false or `UpperTriangular`."))
+        end
+        sparsity_pattern = UpperTriangular(sparsity_pattern)
+    end
     if (length(nodes) < 2 * size_boundary + bandwidth || bandwidth < 1) && (bandwidth != length(nodes) - 1)
         throw(ArgumentError("2 * size_boundary + bandwidth = $(2 * size_boundary + bandwidth) needs to be smaller than or equal to N = $(length(nodes)) and bandwidth = $bandwidth needs to be at least 1."))
     end
     weights, weights_boundary, Ds = construct_multidimensional_function_space_operator(basis_functions, nodes, on_boundary, normals, moments, vol, source;
-                                                                                       bandwidth, size_boundary, different_values,
+                                                                                       bandwidth, size_boundary, different_values, sparsity_pattern,
                                                                                        opt_alg, options, x0, verbose)
-    return MultidimensionalMatrixOperator(nodes, on_boundary, normals, weights, weights_boundary, Ds, accuracy_order, source)
+    return MultidimensionalMatrixDerivativeOperator(nodes, on_boundary, normals, weights, weights_boundary, Ds, accuracy_order, source)
 end
 
 function construct_multidimensional_function_space_operator(basis_functions, nodes, on_boundary, normals, moments, vol,
                                                             ::GlaubitzIskeLampertÖffner2024;
                                                             bandwidth = length(nodes) - 1,
                                                             size_boundary = 2 * bandwidth, different_values = true,
+                                                            sparsity_pattern = nothing,
                                                             opt_alg = LBFGS(), options = Options(g_tol = 1e-14, iterations = 10000),
                                                             x0 = nothing, verbose = false)
     T = typeof(basis_functions[1](nodes[1]))
@@ -248,7 +256,7 @@ function construct_multidimensional_function_space_operator(basis_functions, nod
     N = length(nodes)
     N_boundary = sum(on_boundary)
     @assert length(normals) == N_boundary "You must provide normals for all boundary nodes (length(normals) = $(length(normals)), N_boundary = $N_boundary)."
-    L = get_nsigma(N; bandwidth, size_boundary, different_values)
+    L = get_nsigma(N; bandwidth, size_boundary, different_values, sparsity_pattern)
     basis_functions_gradients = [x -> ForwardDiff.gradient(basis_functions[i], x) for i in 1:K]
     # TODO: Orthonormalize? What happens with moments? Need moments with respect to orthonormalized basis functions?
     V = vandermonde_matrix(basis_functions, nodes)
@@ -265,7 +273,7 @@ function construct_multidimensional_function_space_operator(basis_functions, nod
     BV_cache = DiffCache(copy(A))
     VTBV_cache = DiffCache(M)
     C_cache = DiffCache(copy(M))
-    p = (V, V_xis, normals, moments, on_boundary, vol, S_cache, A_cache, SV_cache, PV_xi_cache, B_cache, BV_cache, C_cache, VTBV_cache, bandwidth, size_boundary, different_values)
+    p = (; V, V_xis, normals, moments, on_boundary, vol, S_cache, A_cache, SV_cache, PV_xi_cache, B_cache, BV_cache, C_cache, VTBV_cache, bandwidth, size_boundary, different_values, sparsity_pattern)
     if isnothing(x0)
         # x0 = zeros(T, d * L + N + N_boundary)
         x0 = [zeros(T, d * L); invsig.(1/N * ones(T, N)); zeros(T, N_boundary)]
@@ -285,7 +293,7 @@ function construct_multidimensional_function_space_operator(basis_functions, nod
     weights_boundary = x[(end - N_boundary + 1):end] # = phi
     function create_D(i)
         sigma = x[(i - 1) * L + 1:(i * L)]
-        S = SummationByPartsOperators.create_S(sigma, N, bandwidth, size_boundary, different_values, nothing)
+        S = SummationByPartsOperators.create_S(sigma, N, bandwidth, size_boundary, different_values, sparsity_pattern)
         B = create_B(weights_boundary, normals, on_boundary, i)
         Q = S + B / 2
         D = inv(P) * Q
@@ -296,7 +304,7 @@ function construct_multidimensional_function_space_operator(basis_functions, nod
 end
 
 @views function SummationByPartsOperators.multidimensional_optimization_function(x, p)
-    V, V_xis, normals, moments, on_boundary, vol, S_cache, A_cache, SV_cache, PV_xi_cache, B_cache, BV_cache, C_cache, VTBV_cache, bandwidth, size_boundary, different_values = p
+    (; V, V_xis, normals, moments, on_boundary, vol, S_cache, A_cache, SV_cache, PV_xi_cache, B_cache, BV_cache, C_cache, VTBV_cache, bandwidth, size_boundary, different_values, sparsity_pattern) = p
     S = get_tmp(S_cache, x)
     A = get_tmp(A_cache, x)
     SV = get_tmp(SV_cache, x)
@@ -308,7 +316,7 @@ end
     d = length(V_xis)
     N = size(V, 1)
     N_boundary = length(normals)
-    L = get_nsigma(N; bandwidth, size_boundary, different_values)
+    L = get_nsigma(N; bandwidth, size_boundary, different_values, sparsity_pattern)
     rho = x[(end - N - N_boundary + 1):(end - N_boundary)]
     phi = x[(end - N_boundary + 1):end]
     P = create_P(rho, vol)
@@ -318,7 +326,7 @@ end
         V_xi = V_xis[i]
         sigma = x[(i - 1) * L + 1:(i * L)]
         fill!(S, zero(eltype(S)))
-        set_S!(S, sigma, N, bandwidth, size_boundary, different_values)
+        set_S!(S, sigma, N, bandwidth, size_boundary, different_values, sparsity_pattern)
         fill!(B, zero(eltype(B)))
         set_B!(B, phi, normals, on_boundary, i)
         mul!(SV, S, V)
@@ -642,7 +650,7 @@ function get_optimization_entries_block_banded(D;
     # if sig is the logistic function, inverting the normalized logistic function is harder, but this still works
     # (eventhough it is not the exaxt inverse)
     rho = invsig.(p)
-    Matrix_D = if D isa MultidimensionalMatrixOperator
+    Matrix_D = if D isa MultidimensionalMatrixDerivativeOperator
         Matrix(D, 1)
     else
         Matrix(D)
@@ -693,18 +701,20 @@ end
 function SummationByPartsOperators.get_multidimensional_optimization_entries(D;
                                                                              bandwidth = div(SummationByPartsOperators.accuracy_order(D), 2),
                                                                              size_boundary = SummationByPartsOperators.lower_bandwidth(D) + 1,
-                                                                             different_values = false)
-    sigmarho = SummationByPartsOperators.get_optimization_entries(D; bandwidth, size_boundary, different_values)
+                                                                             different_values = false,
+                                                                             sparsity_pattern = nothing)
+    sigmarho = SummationByPartsOperators.get_optimization_entries(D; bandwidth, size_boundary, different_values, sparsity_pattern)
     phi = [1.0, 1.0]
     return [sigmarho; phi]
 end
 
 # This only works if the operator is 1D!
-function SummationByPartsOperators.get_multidimensional_optimization_entries(D::MultidimensionalMatrixOperator;
+function SummationByPartsOperators.get_multidimensional_optimization_entries(D::MultidimensionalMatrixDerivativeOperator;
                                                                              bandwidth = div(SummationByPartsOperators.accuracy_order(D), 2),
                                                                              size_boundary = SummationByPartsOperators.lower_bandwidth(D) + 1,
-                                                                             different_values = false)
-    sigmarho = SummationByPartsOperators.get_optimization_entries(D; bandwidth, size_boundary, different_values)
+                                                                             different_values = false,
+                                                                             sparsity_pattern = nothing)
+    sigmarho = SummationByPartsOperators.get_optimization_entries(D; bandwidth, size_boundary, different_values, sparsity_pattern)
     phi = D.weights_boundary
     return [sigmarho; phi]
 end

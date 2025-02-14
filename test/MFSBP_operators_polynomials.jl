@@ -13,8 +13,16 @@ opt_kwargs = (; options = Optim.Options(f_abstol = 1e-25, g_tol = 1e-16, iterati
 atol = 1e-13
 
 # helper functions
-function to_S(D)
-    Q = mass_matrix(D) * Matrix(D)
+function to_S(D::MatrixDerivativeOperator)
+    to_S(mass_matrix(D), Matrix(D))
+end
+
+function to_S(D::MultidimensionalMatrixDerivativeOperator)
+    to_S(mass_matrix(D), Matrix(D, 1))
+end
+
+function to_S(P, D)
+    Q = P * D
     S = 0.5 * (Q - Q')
     return S
 end
@@ -45,11 +53,12 @@ function compute_moments(basis_functions, nodes, normals)
     return (M,)
 end
 
-function obtain_sparsity_pattern(A)
-    sparsity_pattern_diag = Matrix(A) .!= 0.0
-    # Always set the diagonal to false and return an UpperTriangular matrix
-    sparsity_pattern_diag[diagind(sparsity_pattern_diag)] .= false
-    return UpperTriangular(sparsity_pattern_diag)
+function obtain_sparsity_pattern(D::SummationByPartsOperators.AbstractNonperiodicDerivativeOperator)
+    return obtain_sparsity_pattern(to_S(D))
+end
+
+function obtain_sparsity_pattern(S)
+    return UpperTriangular(S .!= 0.0)
 end
 
 function block_banded_sparsity_pattern(N, bandwidth, size_boundary)
@@ -93,6 +102,15 @@ end
                     @test isapprox(Matrix(D, 1), Matrix(D_legendre); atol) # equal
                     @test isapprox(mass_matrix(D), mass_matrix(D_legendre); atol) # equal
                     @test isapprox(mass_matrix_boundary(D, 1), compute_boundary_matrix(n); atol) # equal
+
+                    sparsity_pattern = obtain_sparsity_pattern(D)
+                    D_sparsity_pattern = multidimensional_function_space_operator(basis, nodes, on_boundary, normals, moments, vol,
+                                                                                  GlaubitzIskeLampertÖffner2024();
+                                                                                  sparsity_pattern,
+                                                                                  verbose, opt_kwargs...)
+                    @test isapprox(Matrix(D_sparsity_pattern, 1), Matrix(D_legendre); atol) # equal
+                    @test isapprox(mass_matrix(D_sparsity_pattern), mass_matrix(D_legendre); atol) # equal
+                    @test isapprox(mass_matrix_boundary(D_sparsity_pattern, 1), compute_boundary_matrix(n); atol) # equal
                 end
             end
         end
@@ -202,6 +220,27 @@ end
                     @test isapprox(mass_matrix_boundary(D, 1), compute_boundary_matrix(N); atol) # equal
                     x = SummationByPartsOperators.get_multidimensional_optimization_entries(D; bandwidth, size_boundary, different_values)
                     @test isapprox(x, x_poly; atol)
+
+                    sparsity_pattern = block_banded_sparsity_pattern(N, bandwidth, size_boundary)
+                    @test all(obtain_sparsity_pattern(D) .== sparsity_pattern)
+                    D_sparsity_pattern = multidimensional_function_space_operator(basis, nodes, on_boundary, normals, moments, vol,
+                                                                                  GlaubitzIskeLampertÖffner2024();
+                                                                                  sparsity_pattern,
+                                                                                  verbose, opt_kwargs...)
+                    @test isapprox(Matrix(D_sparsity_pattern, 1), Matrix(D_poly); atol = 1e-1) # almost equal
+                    @test isapprox(mass_matrix(D_sparsity_pattern), mass_matrix(D_poly); atol = 1e-2) # almost equal
+                    @test isapprox(mass_matrix_boundary(D_sparsity_pattern, 1), compute_boundary_matrix(N); atol) # equal
+
+                    # This neeeds only 1 iteration
+                    x_poly_sparsity_pattern = SummationByPartsOperators.get_multidimensional_optimization_entries(D_poly; sparsity_pattern)
+                    D_sparsity_pattern_x0 = multidimensional_function_space_operator(basis, nodes, on_boundary, normals, moments, vol,
+                                                                                     GlaubitzIskeLampertÖffner2024();
+                                                                                     sparsity_pattern,
+                                                                                     verbose, opt_kwargs...,
+                                                                                     x0 = x_poly_sparsity_pattern)
+                    @test isapprox(Matrix(D_sparsity_pattern_x0, 1), Matrix(D_poly); atol) # equal
+                    @test isapprox(mass_matrix(D_sparsity_pattern_x0), mass_matrix(D_poly); atol) # equal
+                    @test isapprox(mass_matrix_boundary(D_sparsity_pattern_x0, 1), compute_boundary_matrix(N); atol) # equal
                 end
             end
         end

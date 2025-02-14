@@ -1,5 +1,5 @@
 """
-    MultidimensionalMatrixOperator{Dim, T}
+    MultidimensionalMatrixDerivativeOperator{Dim, T}
 
 Multidimensional operator that represents a first-derivative operator based on a matrix.
 
@@ -8,7 +8,7 @@ a specific direction can be obtained with `mass_matrix_boundary(D, dim)`.
 
 See also [`multidimensional_function_space_operator`](@ref), [`GlaubitzIskeLampertÖffner2024`](@ref).
 """
-@auto_hash_equals struct MultidimensionalMatrixOperator{Dim,T,NodesType,DType<:AbstractMatrix{T},SourceOfCoefficients} <: AbstractNonperiodicDerivativeOperator{T}
+@auto_hash_equals struct MultidimensionalMatrixDerivativeOperator{Dim,T,NodesType,DType<:AbstractMatrix{T},SourceOfCoefficients} <: AbstractNonperiodicDerivativeOperator{T}
     grid::NodesType # length(grid) == N, e.g. Vector{SVector{Dim, T}} or `NodeSet` from KernelInterpolation.jl
     on_boundary::Vector{Bool} # length(on_boundary) == N
     normals::Vector{SVector{Dim,T}} # length(normals) == N_boundary < N
@@ -18,7 +18,7 @@ See also [`multidimensional_function_space_operator`](@ref), [`GlaubitzIskeLampe
     accuracy_order::Int
     source::SourceOfCoefficients
 
-    function MultidimensionalMatrixOperator(nodes::NodesType,
+    function MultidimensionalMatrixDerivativeOperator(nodes::NodesType,
         on_boundary::Vector{Bool},
         normals::Vector{SVector{Dim,T}},
         weights::Vector{T}, weights_boundary::Vector{T},
@@ -28,29 +28,29 @@ See also [`multidimensional_function_space_operator`](@ref), [`GlaubitzIskeLampe
     end
 end
 
-Base.ndims(::MultidimensionalMatrixOperator{Dim}) where {Dim} = Dim
-derivative_order(::MultidimensionalMatrixOperator) = 1
-Matrix(D::MultidimensionalMatrixOperator, dim::Int) = Matrix(D.Ds[dim])
+Base.ndims(::MultidimensionalMatrixDerivativeOperator{Dim}) where {Dim} = Dim
+derivative_order(::MultidimensionalMatrixDerivativeOperator) = 1
+Matrix(D::MultidimensionalMatrixDerivativeOperator, dim::Int) = Matrix(D.Ds[dim])
 
-source_of_coefficients(D::MultidimensionalMatrixOperator) = D.source
+source_of_coefficients(D::MultidimensionalMatrixDerivativeOperator) = D.source
 
-function integrate(func, u, D::MultidimensionalMatrixOperator)
+function integrate(func, u, D::MultidimensionalMatrixDerivativeOperator)
     return integrate(func, u, D.weights)
 end
 
-function integrate_boundary(func, u, D::MultidimensionalMatrixOperator, dim)
+function integrate_boundary(func, u, D::MultidimensionalMatrixDerivativeOperator, dim)
     return integrate(func, u, weights_boundary_scaled(D, dim))
 end
 
-mass_matrix(D::MultidimensionalMatrixOperator) = Diagonal(D.weights)
+mass_matrix(D::MultidimensionalMatrixDerivativeOperator) = Diagonal(D.weights)
 # TODO: more efficient
-weights_boundary(D::MultidimensionalMatrixOperator) = get_weight_boundary.(Ref(D), 1:length(grid(D)))
-weights_boundary_scaled(D::MultidimensionalMatrixOperator, dim::Int) = get_weight_boundary_scaled.(Ref(D), Ref(dim), 1:length(grid(D)))
-mass_matrix_boundary(D::MultidimensionalMatrixOperator, dim::Int) = Diagonal(weights_boundary_scaled(D, dim))
+weights_boundary(D::MultidimensionalMatrixDerivativeOperator) = get_weight_boundary.(Ref(D), 1:length(grid(D)))
+weights_boundary_scaled(D::MultidimensionalMatrixDerivativeOperator, dim::Int) = get_weight_boundary_scaled.(Ref(D), Ref(dim), 1:length(grid(D)))
+mass_matrix_boundary(D::MultidimensionalMatrixDerivativeOperator, dim::Int) = Diagonal(weights_boundary_scaled(D, dim))
 
-Base.eltype(::MultidimensionalMatrixOperator{Dim,T}) where {Dim,T} = T
+Base.eltype(::MultidimensionalMatrixDerivativeOperator{Dim,T}) where {Dim,T} = T
 
-function scale_by_mass_matrix!(u::AbstractVector, D::MultidimensionalMatrixOperator, factor=true)
+function scale_by_mass_matrix!(u::AbstractVector, D::MultidimensionalMatrixDerivativeOperator, factor=true)
     N, _ = size(D)
     @boundscheck begin
         @argcheck N == length(u)
@@ -63,7 +63,7 @@ function scale_by_mass_matrix!(u::AbstractVector, D::MultidimensionalMatrixOpera
     return u
 end
 
-function scale_by_inverse_mass_matrix!(u::AbstractVector, D::MultidimensionalMatrixOperator, factor=true)
+function scale_by_inverse_mass_matrix!(u::AbstractVector, D::MultidimensionalMatrixDerivativeOperator, factor=true)
     N, _ = size(D)
     @boundscheck begin
         @argcheck N == length(u)
@@ -76,7 +76,7 @@ function scale_by_inverse_mass_matrix!(u::AbstractVector, D::MultidimensionalMat
     u
 end
 
-function get_weight(D::MultidimensionalMatrixOperator, i::Int)
+function get_weight(D::MultidimensionalMatrixDerivativeOperator, i::Int)
     @unpack weights = D
     N, _ = size(D)
     @boundscheck begin
@@ -86,7 +86,7 @@ function get_weight(D::MultidimensionalMatrixOperator, i::Int)
     ω
 end
 
-function get_weight_boundary(D::MultidimensionalMatrixOperator, i::Int)
+function get_weight_boundary(D::MultidimensionalMatrixDerivativeOperator, i::Int)
     @unpack weights_boundary, on_boundary = D
     N, _ = size(D)
     @boundscheck begin
@@ -100,7 +100,7 @@ function get_weight_boundary(D::MultidimensionalMatrixOperator, i::Int)
     return ω
 end
 
-function get_weight_boundary_scaled(D::MultidimensionalMatrixOperator, dim::Int, i::Int)
+function get_weight_boundary_scaled(D::MultidimensionalMatrixDerivativeOperator, dim::Int, i::Int)
     @unpack normals, on_boundary = D
     if !on_boundary[i]
         return zero(eltype(D))
@@ -110,7 +110,7 @@ function get_weight_boundary_scaled(D::MultidimensionalMatrixOperator, dim::Int,
     ω * normals[j][dim]
 end
 
-function Base.show(io::IO, D::MultidimensionalMatrixOperator)
+function Base.show(io::IO, D::MultidimensionalMatrixDerivativeOperator)
     if get(io, :compact, false)
         summary(io, D)
     else
@@ -122,25 +122,25 @@ end
 
 # TODO: mul! How? Depends on direction
 
-function lower_bandwidth(D::MultidimensionalMatrixOperator)
+function lower_bandwidth(D::MultidimensionalMatrixDerivativeOperator)
     size(D, 1) - 1
 end
 
-function upper_bandwidth(D::MultidimensionalMatrixOperator)
+function upper_bandwidth(D::MultidimensionalMatrixDerivativeOperator)
     size(D, 1) - 1
 end
 
-function accuracy_order(D::MultidimensionalMatrixOperator)
+function accuracy_order(D::MultidimensionalMatrixDerivativeOperator)
     D.accuracy_order
 end
 
 # TODO
-function left_boundary_weight(D::MultidimensionalMatrixOperator)
+function left_boundary_weight(D::MultidimensionalMatrixDerivativeOperator)
     @inbounds retval = D.weights[begin]
     retval
 end
 
-function right_boundary_weight(D::MultidimensionalMatrixOperator)
+function right_boundary_weight(D::MultidimensionalMatrixDerivativeOperator)
     @inbounds retval = D.weights[end]
     retval
 end

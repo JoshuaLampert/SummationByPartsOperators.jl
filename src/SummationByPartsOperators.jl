@@ -142,7 +142,7 @@ export PeriodicDerivativeOperator, PeriodicDissipationOperator,
        FourierPolynomialDerivativeOperator, FourierRationalDerivativeOperator,
        FourierDerivativeOperator2D,
        LegendreDerivativeOperator, LegendreSecondDerivativeOperator,
-       MatrixDerivativeOperator,
+       MatrixDerivativeOperator, MultidimensionalMatrixDerivativeOperator
        UpwindOperators, PeriodicUpwindOperators
 export FilterCallback, ConstantFilter, ExponentialFilter
 export SafeMode, FastMode, ThreadedMode
