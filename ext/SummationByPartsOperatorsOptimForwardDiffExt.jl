@@ -651,7 +651,7 @@ function get_optimization_entries_block_banded(D;
     # (eventhough it is not the exaxt inverse)
     rho = invsig.(p)
     Matrix_D = if D isa MultidimensionalMatrixDerivativeOperator
-        Matrix(D, 1)
+        Matrix(D[1])
     else
         Matrix(D)
     end

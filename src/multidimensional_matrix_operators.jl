@@ -1,13 +1,22 @@
 """
     MultidimensionalMatrixDerivativeOperator{Dim, T}
+    MultidimensionalMatrixDerivativeOperator(nodes::NodesType, on_boundary::Vector{Bool}, normals::Vector{SVector{Dim,T}},
+                                             weights::Vector{T}, weights_boundary::Vector{T}, Ds::NTuple{Dim,DType},
+                                             accuracy_order::Int, source::SourceOfCoefficients) where {Dim,T<:Real,NodesType,DType<:AbstractMatrix{T}}
 
 Multidimensional operator that represents a first-derivative operator based on matrices.
 
-To obtain the derivative operator in a specific direction, use `Matrix(D, dim)`. The boundary operator in
-a specific direction can be obtained with `mass_matrix_boundary(D, dim)`. The mass matrix of the operator
+An instance of this type can be constructed by passing the nodes `nodes` (e.g. a `Vector{SVector}`), a vector of booleans `on_boundary` that
+indicates whether a node is on the boundary or not, the normal vectors `normals` of the boundary nodes, the weights `weights` and `weights_boundary`
+of the operator, the derivative matrices `Ds` in each direction, the `accuracy_order` of the operator, and the `source` of coefficients, which
+can be `nothing` for experimentation. The lengths of `normals` and `weights_boundary` should be the same and should coincide with the number of
+boundary nodes (i.e. the number if `true`s in `on_boundary`).
+
+To obtain the derivative operator in a specific direction, use `D[dim]`. The boundary operator in a specific direction can be obtained with
+`mass_matrix_boundary(D, dim)` and will be constructed as a mimetic operator based on `weights_boundary`. The mass matrix of the operator
 is given by `mass_matrix(D)`.
 
-See also [`multidimensional_function_space_operator`](@ref), [`GlaubitzIskeLampertÖffner2024`](@ref).
+See also [`tensor_product_operator_2D`](@ref), [`multidimensional_function_space_operator`](@ref), [`GlaubitzIskeLampertÖffner2024`](@ref).
 """
 @auto_hash_equals struct MultidimensionalMatrixDerivativeOperator{Dim,T,NodesType,DType<:AbstractMatrix{T},SourceOfCoefficients} <: AbstractNonperiodicDerivativeOperator{T}
     grid::NodesType # length(grid) == N, e.g. Vector{SVector{Dim, T}} or `NodeSet` from KernelInterpolation.jl
@@ -31,7 +40,7 @@ end
 
 Base.ndims(::MultidimensionalMatrixDerivativeOperator{Dim}) where {Dim} = Dim
 derivative_order(::MultidimensionalMatrixDerivativeOperator) = 1
-Matrix(D::MultidimensionalMatrixDerivativeOperator, dim::Int) = Matrix(D.Ds[dim])
+Base.getindex(D::MultidimensionalMatrixDerivativeOperator, i::Int) = D.Ds[i]
 
 source_of_coefficients(D::MultidimensionalMatrixDerivativeOperator) = D.source
 
@@ -184,7 +193,7 @@ function tensor_product_operator_2D(D)
     # B_y = Diagonal(kron(P_1D, B_1D)) # = Q_y + Q_y'
 
     weights = diag(P)
-    Ds = (D_x, D_y)
+    Ds = (sparse(D_x), sparse(D_y))
     normals = Vector{SVector{2,Float64}}(undef, 4 * N - 4)
     # weights_boundary is chosen such that
     # mass_matrix_boundary(D, 1) == Diagonal(kron(B_1D, P_1D)) ( = Q_x + Q_x') and

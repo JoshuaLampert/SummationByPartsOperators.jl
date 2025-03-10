@@ -18,7 +18,7 @@ function to_S(D::MatrixDerivativeOperator)
 end
 
 function to_S(D::MultidimensionalMatrixDerivativeOperator)
-    to_S(mass_matrix(D), Matrix(D, 1))
+    to_S(mass_matrix(D), Matrix(D[1]))
 end
 
 function to_S(P, D)
@@ -99,7 +99,7 @@ end
                     D = multidimensional_function_space_operator(basis, nodes, on_boundary, normals, moments, vol,
                                                                  GlaubitzIskeLampertÖffner2024();
                                                                  verbose, opt_kwargs...)
-                    @test isapprox(Matrix(D, 1), Matrix(D_legendre); atol) # equal
+                    @test isapprox(Matrix(D[1]), Matrix(D_legendre); atol) # equal
                     @test isapprox(mass_matrix(D), mass_matrix(D_legendre); atol) # equal
                     @test isapprox(mass_matrix_boundary(D, 1), compute_boundary_matrix(n); atol) # equal
 
@@ -108,7 +108,7 @@ end
                                                                                   GlaubitzIskeLampertÖffner2024();
                                                                                   sparsity_pattern,
                                                                                   verbose, opt_kwargs...)
-                    @test isapprox(Matrix(D_sparsity_pattern, 1), Matrix(D_legendre); atol) # equal
+                    @test isapprox(Matrix(D_sparsity_pattern[1]), Matrix(D_legendre); atol) # equal
                     @test isapprox(mass_matrix(D_sparsity_pattern), mass_matrix(D_legendre); atol) # equal
                     @test isapprox(mass_matrix_boundary(D_sparsity_pattern, 1), compute_boundary_matrix(n); atol) # equal
                 end
@@ -145,7 +145,7 @@ end
                                                                  GlaubitzIskeLampertÖffner2024();
                                                                  bandwidth, size_boundary, different_values,
                                                                  verbose, opt_kwargs...)
-                    @test isapprox(Matrix(D, 1), Matrix(D_poly); atol) # equal
+                    @test isapprox(Matrix(D[1]), Matrix(D_poly); atol) # equal
                     @test isapprox(mass_matrix(D), mass_matrix(D_poly); atol) # equal
                     @test isapprox(mass_matrix_boundary(D, 1), compute_boundary_matrix(N); atol) # equal
                 end
@@ -205,7 +205,7 @@ end
                                                                  GlaubitzIskeLampertÖffner2024();
                                                                  bandwidth, size_boundary, different_values,
                                                                  verbose, opt_kwargs...)
-                    @test isapprox(Matrix(D, 1), Matrix(D_poly); atol = 1e-1) # almost equal
+                    @test isapprox(Matrix(D[1]), Matrix(D_poly); atol = 1e-1) # almost equal
                     @test isapprox(mass_matrix(D), mass_matrix(D_poly); atol = 1e-2) # almost equal
                     @test isapprox(mass_matrix_boundary(D, 1), compute_boundary_matrix(N); atol) # equal
 
@@ -215,7 +215,7 @@ end
                                                                  bandwidth, size_boundary, different_values,
                                                                  verbose, opt_kwargs...,
                                                                  x0 = x_poly)
-                    @test isapprox(Matrix(D, 1), Matrix(D_poly); atol) # equal
+                    @test isapprox(Matrix(D[1]), Matrix(D_poly); atol) # equal
                     @test isapprox(mass_matrix(D), mass_matrix(D_poly); atol) # equal
                     @test isapprox(mass_matrix_boundary(D, 1), compute_boundary_matrix(N); atol) # equal
                     x = SummationByPartsOperators.get_multidimensional_optimization_entries(D; bandwidth, size_boundary, different_values)
@@ -227,7 +227,7 @@ end
                                                                                   GlaubitzIskeLampertÖffner2024();
                                                                                   sparsity_pattern,
                                                                                   verbose, opt_kwargs...)
-                    @test isapprox(Matrix(D_sparsity_pattern, 1), Matrix(D_poly); atol = 1e-1) # almost equal
+                    @test isapprox(Matrix(D_sparsity_pattern[1]), Matrix(D_poly); atol = 1e-1) # almost equal
                     @test isapprox(mass_matrix(D_sparsity_pattern), mass_matrix(D_poly); atol = 1e-2) # almost equal
                     @test isapprox(mass_matrix_boundary(D_sparsity_pattern, 1), compute_boundary_matrix(N); atol) # equal
 
@@ -238,7 +238,7 @@ end
                                                                                      sparsity_pattern,
                                                                                      verbose, opt_kwargs...,
                                                                                      x0 = x_poly_sparsity_pattern)
-                    @test isapprox(Matrix(D_sparsity_pattern_x0, 1), Matrix(D_poly); atol) # equal
+                    @test isapprox(Matrix(D_sparsity_pattern_x0[1]), Matrix(D_poly); atol) # equal
                     @test isapprox(mass_matrix(D_sparsity_pattern_x0), mass_matrix(D_poly); atol) # equal
                     @test isapprox(mass_matrix_boundary(D_sparsity_pattern_x0, 1), compute_boundary_matrix(N); atol) # equal
                 end
@@ -282,7 +282,7 @@ end
         #                                                      GlaubitzIskeLampertÖffner2024();
         #                                                      bandwidth, size_boundary, different_values,
         #                                                      verbose, opt_kwargs...)
-        #         @test isapprox(sum(abs.(Matrix(D, 1) - Matrix(D_poly))), 65.95363412995373; atol) # not equal
+        #         @test isapprox(sum(abs.(Matrix(D[1]) - Matrix(D_poly))), 65.95363412995373; atol) # not equal
         #         @test isapprox(mass_matrix(D), mass_matrix(D_poly)) # equal
         #         @test isapprox(mass_matrix_boundary(D, 1), compute_boundary_matrix(N); atol) # equal
 
@@ -292,7 +292,7 @@ end
     #                                                          bandwidth, size_boundary, different_values,
     #                                                          verbose, opt_kwargs...,
     #                                                          x0 = x_poly)
-    #             @test isapprox(Matrix(D, 1), Matrix(D_poly); atol) # equal
+    #             @test isapprox(Matrix(D[1]), Matrix(D_poly); atol) # equal
     #             @test isapprox(mass_matrix(D), mass_matrix(D_poly); atol) # equal
     #             @test isapprox(mass_matrix_boundary(D, 1), compute_boundary_matrix(N); atol) # equal
     #             x = SummationByPartsOperators.get_multidimensional_optimization_entries(D; bandwidth, size_boundary, different_values)
@@ -335,7 +335,7 @@ end
     #                                                          GlaubitzIskeLampertÖffner2024();
     #                                                          bandwidth, size_boundary, different_values,
     #                                                          verbose, opt_kwargs...)
-    #             @test isapprox(sum(abs.(Matrix(D, 1) - Matrix(D_poly))), 110.71611497448345; atol) # not equal
+    #             @test isapprox(sum(abs.(Matrix(D[1]) - Matrix(D_poly))), 110.71611497448345; atol) # not equal
     #             @test isapprox(sum(abs.(mass_matrix(D) - mass_matrix(D_poly))), 1.3990176657854683; atol) # not equal
     #             @test isapprox(mass_matrix_boundary(D, 1), compute_boundary_matrix(N); atol) # equal
 
@@ -345,7 +345,7 @@ end
     #                                                          bandwidth, size_boundary, different_values,
     #                                                          verbose, opt_kwargs...,
     #                                                          x0 = x_poly)
-    #             @test isapprox(Matrix(D, 1), Matrix(D_poly); atol) # equal
+    #             @test isapprox(Matrix(D[1]), Matrix(D_poly); atol) # equal
     #             @test isapprox(mass_matrix(D), mass_matrix(D_poly); atol) # equal
     #             @test isapprox(mass_matrix_boundary(D, 1), compute_boundary_matrix(N); atol) # equal
     #             x = SummationByPartsOperators.get_multidimensional_optimization_entries(D; bandwidth, size_boundary, different_values)
@@ -383,7 +383,7 @@ end
     #                                                          GlaubitzIskeLampertÖffner2024();
     #                                                          bandwidth, size_boundary, different_values,
     #                                                          verbose, opt_kwargs...)
-    #             @test isapprox(Matrix(D, 1), Matrix(D_poly); 1e-12) # equal
+    #             @test isapprox(Matrix(D[1]), Matrix(D_poly); 1e-12) # equal
     #             @test isapprox(mass_matrix(D), mass_matrix(D_poly); 1e-12) # equal
     #             @test isapprox(mass_matrix_boundary(D, 1), compute_boundary_matrix(N); atol) # equal
     #         end
@@ -426,7 +426,7 @@ end
     #                                                         GlaubitzIskeLampertÖffner2024();
     #                                                         bandwidth, size_boundary, different_values,
     #                                                         verbose, opt_kwargs...)
-    #             @test isapprox(Matrix(D, 1), Matrix(D_poly); atol = 1.0) # almost equal
+    #             @test isapprox(Matrix(D[1]), Matrix(D_poly); atol = 1.0) # almost equal
     #             @test isapprox(mass_matrix(D), mass_matrix(D_poly); atol = 1e-1) # almost equal
     #             @test isapprox(mass_matrix_boundary(D, 1), compute_boundary_matrix(N); atol) # equal
 
@@ -436,7 +436,7 @@ end
     #                                                         bandwidth, size_boundary, different_values,
     #                                                         verbose, opt_kwargs...,
     #                                                         x0 = x_poly)
-    #             @test isapprox(Matrix(D, 1), Matrix(D_poly); 1e-12) # equal
+    #             @test isapprox(Matrix(D[1]), Matrix(D_poly); 1e-12) # equal
     #             @test isapprox(mass_matrix(D), mass_matrix(D_poly); 1e-12) # equal
     #             @test isapprox(mass_matrix_boundary(D, 1), compute_boundary_matrix(N); atol) # equal
     #             x = SummationByPartsOperators.get_multidimensional_optimization_entries(D; bandwidth, size_boundary, different_values)
@@ -481,7 +481,7 @@ end
     #                                                          GlaubitzIskeLampertÖffner2024();
     #                                                          bandwidth, size_boundary, different_values,
     #                                                          verbose, opt_kwargs...)
-    #             @test isapprox(sum(abs.(Matrix(D, 1) - Matrix(D_poly))), 67.83380574798099; atol) # not equal
+    #             @test isapprox(sum(abs.(Matrix(D[1]) - Matrix(D_poly))), 67.83380574798099; atol) # not equal
     #             @test isapprox(mass_matrix(D), mass_matrix(D_poly); atol) # equal
     #             @test isapprox(mass_matrix_boundary(D, 1), compute_boundary_matrix(N); atol) # equal
 
@@ -491,7 +491,7 @@ end
     #                                                          bandwidth, size_boundary, different_values,
     #                                                          verbose, opt_kwargs...,
     #                                                          x0 = x_poly)
-    #             @test isapprox(Matrix(D, 1), Matrix(D_poly); atol) # equal
+    #             @test isapprox(Matrix(D[1]), Matrix(D_poly); atol) # equal
     #             @test isapprox(mass_matrix(D), mass_matrix(D_poly); atol) # equal
     #             @test isapprox(mass_matrix_boundary(D, 1), compute_boundary_matrix(N); atol) # equal
     #             x = SummationByPartsOperators.get_multidimensional_optimization_entries(D; bandwidth, size_boundary, different_values)
@@ -536,7 +536,7 @@ end
     #                                                          GlaubitzIskeLampertÖffner2024();
     #                                                          bandwidth, size_boundary, different_values,
     #                                                          verbose, opt_kwargs...)
-    #             @test isapprox(sum(abs.(Matrix(D, 1) - Matrix(D_poly))), 97.09483989061656; atol) # not equal
+    #             @test isapprox(sum(abs.(Matrix(D[1]) - Matrix(D_poly))), 97.09483989061656; atol) # not equal
     #             @test isapprox(sum(abs.(mass_matrix(D) - mass_matrix(D_poly))), 1.5677588546370986; atol) # not equal
     #             @test isapprox(mass_matrix_boundary(D, 1), compute_boundary_matrix(N); atol) # equal
 
@@ -546,7 +546,7 @@ end
     #                                                          bandwidth, size_boundary, different_values,
     #                                                          verbose, opt_kwargs...,
     #                                                          x0 = x_poly)
-    #             @test isapprox(Matrix(D, 1), Matrix(D_poly); atol) # equal
+    #             @test isapprox(Matrix(D[1]), Matrix(D_poly); atol) # equal
     #             @test isapprox(mass_matrix(D), mass_matrix(D_poly); atol) # equal
     #             @test isapprox(mass_matrix_boundary(D, 1), compute_boundary_matrix(N); atol) # equal
     #             x = SummationByPartsOperators.get_multidimensional_optimization_entries(D; bandwidth, size_boundary, different_values)
