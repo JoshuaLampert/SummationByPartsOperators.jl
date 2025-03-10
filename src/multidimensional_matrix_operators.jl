@@ -1,10 +1,11 @@
 """
     MultidimensionalMatrixDerivativeOperator{Dim, T}
 
-Multidimensional operator that represents a first-derivative operator based on a matrix.
+Multidimensional operator that represents a first-derivative operator based on matrices.
 
-To be obtain the derivative operator in a specific direction, use `Matrix(D, dim)`. The boundary operator in
-a specific direction can be obtained with `mass_matrix_boundary(D, dim)`.
+To obtain the derivative operator in a specific direction, use `Matrix(D, dim)`. The boundary operator in
+a specific direction can be obtained with `mass_matrix_boundary(D, dim)`. The mass matrix of the operator
+is given by `mass_matrix(D)`.
 
 See also [`multidimensional_function_space_operator`](@ref), [`GlaubitzIskeLampertÖffner2024`](@ref).
 """
@@ -134,7 +135,6 @@ function accuracy_order(D::MultidimensionalMatrixDerivativeOperator)
     D.accuracy_order
 end
 
-# TODO
 function left_boundary_weight(D::MultidimensionalMatrixDerivativeOperator)
     @inbounds retval = D.weights[begin]
     retval
@@ -143,4 +143,87 @@ end
 function right_boundary_weight(D::MultidimensionalMatrixDerivativeOperator)
     @inbounds retval = D.weights[end]
     retval
+end
+
+"""
+    tensor_product_operator_2D(D)
+
+Create a 2D [`MultidimensionalMatrixDerivativeOperator`](@ref) based on a 1D derivative operator `D` using a tensor product structure.
+
+For the construction, see also:
+- Sigrun Ortleb (2021)
+  Numerical Methods for Fluid Flow:
+    High Order SBP Schemes, IMEX Advection-Diffusion Splitting and  Positivity Preservation for Production-Destruction-PDEs
+  Habilitation thesis, University of Kassel, [DOI: 10.17170/kobra-202301037274](https://doi.org/10.17170/kobra-202301037274),
+  Chapter 1.2.4.
+- Magnus Svärd, Jan Nordström (2014)
+  Review of summation-by-parts schemes for initial-boundary-value problems
+  Journal of Computational Physics 268, pp. 17-38, [DOI: 10.1016/j.jcp.2014.02.031](https://doi.org/10.1016/j.jcp.2014.02.031).
+"""
+function tensor_product_operator_2D(D)
+    nodes_1D = grid(D)
+    N = length(nodes_1D)
+    nodes = SVector.(vec(nodes_1D' .* ones(N)), vec(ones(N)' .* nodes_1D))
+    on_boundary = zeros(Bool, N^2)
+    on_boundary[1:N] .= true
+    on_boundary[N:N:end-N + 1] .= true
+    on_boundary[N + 1:N:end-N + 1] .= true
+    on_boundary[end-N+1:end] .= true
+
+    D_1D = Matrix(D)
+    P_1D = mass_matrix(D)
+    P = kron(P_1D, P_1D)
+    D_x = kron(D_1D, Matrix(I, (N, N))) # = inv(P) * Q_x, Q_x = kron(P_1D, Q_1D), Q_1D = P_1D * D_1D
+    D_y = kron(Matrix(I, (N, N)), D_1D) # = inv(P) * Q_y, Q_y = kron(Q_1D, P_1D), Q_1D = D_1D * P_1D
+
+    # B_1D = zeros(N, N)
+    # B_1D[1, 1] = -1.0
+    # B_1D[end, end] = 1.0
+
+    # B_x = Diagonal(kron(B_1D, P_1D)) # = Q_x + Q_x'
+    # B_y = Diagonal(kron(P_1D, B_1D)) # = Q_y + Q_y'
+
+    weights = diag(P)
+    Ds = (D_x, D_y)
+    normals = Vector{SVector{2,Float64}}(undef, 4 * N - 4)
+    # weights_boundary is chosen such that
+    # mass_matrix_boundary(D, 1) == Diagonal(kron(B_1D, P_1D)) ( = Q_x + Q_x') and
+    # mass_matrix_boundary(D, 2) == Diagonal(kron(P_1D, B_1D)) ( = Q_y + Q_y')
+    weights_boundary = Vector{Float64}(undef, 4 * N - 4)
+    j = 0
+    for i in eachindex(normals)
+        if i == 1 # lower left corner
+            normals[i] = SVector(-1.0, -1.0)
+            weights_boundary[i] = P_1D[1, 1]
+        elseif i < N # left boundary
+            normals[i] = SVector(-1.0, 0.0)
+            weights_boundary[i] = P_1D[i, i]
+        elseif i == N # upper left corner
+            normals[i] = SVector(-1.0, 1.0)
+            weights_boundary[i] = P_1D[N, N]
+        elseif i < 3 * N - 3
+            if (i - N - 1) % 2 == 0 # lower boundary
+                normals[i] = SVector(0.0, -1.0)
+                k = i - N + 1 - j
+                weights_boundary[i] = P_1D[k, k]
+            else # upper boundary
+                normals[i] = SVector(0.0, 1.0)
+                k = i - N - j
+                weights_boundary[i] = P_1D[k, k]
+                j += 1
+            end
+        elseif i == 3 * N - 3 # lower right corner
+            normals[i] = SVector(1.0, -1.0)
+            weights_boundary[i] = P_1D[1, 1]
+        elseif i < 4 * N - 4 # right boundary
+            normals[i] = SVector(1.0, 0.0)
+            k = i - (3 * N - 4)
+            weights_boundary[i] = P_1D[k, k]
+        else # i == 4 * N - 4 # upper right corner
+            normals[i] = SVector(1.0, 1.0)
+            weights_boundary[i] = P_1D[N, N]
+        end
+    end
+    return MultidimensionalMatrixDerivativeOperator(nodes, on_boundary, normals, weights, weights_boundary, Ds,
+                                                    accuracy_order(D), source_of_coefficients(D))
 end
