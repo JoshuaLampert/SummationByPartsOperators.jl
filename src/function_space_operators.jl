@@ -110,20 +110,19 @@ end
 
 # This function is extended in the package extension SummationByPartsOperatorsOptimExt
 """
-    multidimensional_function_space_operator(basis_functions, nodes, on_boundary, normals, moments, vol, source;
+    multidimensional_function_space_operator(basis_functions, nodes, boundary_indices, normals, moments, vol, source;
                                              derivative_order = 1, accuracy_order = 0,
                                              bandwidth = length(nodes) - 1, size_boundary = 2 * bandwidth,
                                              different_values = true, sparsity_pattern = nothing,
                                              opt_alg = Optim.LBFGS(), options = Optim.Options(g_tol = 1e-14, iterations = 10000),
                                              x0 = nothing, verbose = false)
 
-Construct a multidimensional operator that represents a first-derivative operator in a function
+Construct a [`MultidimensionalMatrixOperator`](@ref) that represents a first-derivative operator in a function
 space spanned by the `basis_functions`, which is an iterable of functions. The operator is constructed on the
-scattered nodes `nodes`. They should be provided as an iterable of `SVector{Dim, T}`. The `on_boundary`
-is an iterable of booleans that indicates whether a node is on the boundary or not. `normals` is a
-vector of `SVector{Dim, T}` that contains the normal vectors of the boundary nodes. The `moments` are a
-`Tuple` of matrices that represent the moments of the basis functions in each direction. The total volume of the
-domain is given by `vol`.
+scattered nodes `nodes`. They should be provided as an iterable of `SVector{Dim, T}`. The `boundary_indices`
+is a vector of indies that indicates, which nodes are on the boundary. `normals` is a vector of `SVector{Dim, T}`
+that contains the normal vectors of the boundary nodes. The `moments` are a `Tuple` of matrices that represent
+the moments of the basis functions in each direction. The total volume of the domain is given by `vol`.
 
 The `accuracy_order` is the order of the accuracy of the operator, which can optionally be passed,
 but does not have any effect on the operator.
@@ -158,7 +157,6 @@ is not provided.
 
 The keyword argument `verbose` can be set to `true` to print information about the optimization process.
 
-The operator that is a [`MultidimensionalMatrixOperator`](@ref) and follows the general interface.
 In order to use this function, the package `Optim` must be loaded.
 
 See also [`GlaubitzIskeLampertÖffner2024`](@ref).
