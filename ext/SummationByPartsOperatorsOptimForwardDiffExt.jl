@@ -169,22 +169,18 @@ function create_P(rho, vol)
     return P
 end
 
-function create_B(phi, normals, on_boundary, i)
-    b = zeros(eltype(phi), length(on_boundary))
+function create_B(N, phi, normals, boundary_indices, dim)
+    b = zeros(eltype(phi), N)
     B = Diagonal(b)
-    set_B!(B, phi, normals, on_boundary, i)
+    set_B!(B, phi, normals, boundary_indices, dim)
     return B
 end
 
-function set_B!(B, phi, normals, on_boundary, i)
-    j = 1
-    for k in eachindex(on_boundary)
-        if on_boundary[k]
-            B[k, k] = phi[j] * normals[j][i]
-            j += 1
-        else
-            B[k, k] = zero(eltype(phi))
-        end
+function set_B!(B, phi, normals, boundary_indices, dim)
+    # here, we assume that the boundary_indices are unique
+    for j in eachindex(boundary_indices)
+        k = boundary_indices[j]
+        B[k, k] = phi[j] * normals[j][dim]
     end
 end
 
@@ -217,7 +213,7 @@ function SummationByPartsOperators.get_nsigma(N; bandwidth = N - 1, size_boundar
     end
 end
 
-function SummationByPartsOperators.multidimensional_function_space_operator(basis_functions, nodes, on_boundary, normals, moments, vol,
+function SummationByPartsOperators.multidimensional_function_space_operator(basis_functions, nodes, boundary_indices, normals, moments, vol,
                                                                             source::SourceOfCoefficients;
                                                                             derivative_order = 1, accuracy_order = 0, bandwidth = length(nodes) - 1,
                                                                             size_boundary = 2 * bandwidth, different_values = true,
@@ -237,13 +233,17 @@ function SummationByPartsOperators.multidimensional_function_space_operator(basi
     if (length(nodes) < 2 * size_boundary + bandwidth || bandwidth < 1) && (bandwidth != length(nodes) - 1)
         throw(ArgumentError("2 * size_boundary + bandwidth = $(2 * size_boundary + bandwidth) needs to be smaller than or equal to N = $(length(nodes)) and bandwidth = $bandwidth needs to be at least 1."))
     end
-    weights, weights_boundary, Ds = construct_multidimensional_function_space_operator(basis_functions, nodes, on_boundary, normals, moments, vol, source;
+    # For now, we assume there are no repeated boundary indices, i.e., no nodes are in corners
+    if length(unique(boundary_indices)) != length(boundary_indices)
+        throw(ArgumentError("The boundary indices should be unique"))
+    end
+    weights, weights_boundary, Ds = construct_multidimensional_function_space_operator(basis_functions, nodes, boundary_indices, normals, moments, vol, source;
                                                                                        bandwidth, size_boundary, different_values, sparsity_pattern,
                                                                                        opt_alg, options, x0, verbose)
-    return MultidimensionalMatrixDerivativeOperator(nodes, on_boundary, normals, weights, weights_boundary, Ds, accuracy_order, source)
+    return MultidimensionalMatrixDerivativeOperator(nodes, boundary_indices, normals, weights, weights_boundary, Ds, accuracy_order, source)
 end
 
-function construct_multidimensional_function_space_operator(basis_functions, nodes, on_boundary, normals, moments, vol,
+function construct_multidimensional_function_space_operator(basis_functions, nodes, boundary_indices, normals, moments, vol,
                                                             ::GlaubitzIskeLampertÖffner2024;
                                                             bandwidth = length(nodes) - 1,
                                                             size_boundary = 2 * bandwidth, different_values = true,
@@ -254,7 +254,7 @@ function construct_multidimensional_function_space_operator(basis_functions, nod
     d = length(first(nodes))
     K = length(basis_functions)
     N = length(nodes)
-    N_boundary = sum(on_boundary)
+    N_boundary = length(boundary_indices)
     @assert length(normals) == N_boundary "You must provide normals for all boundary nodes (length(normals) = $(length(normals)), N_boundary = $N_boundary)."
     L = get_nsigma(N; bandwidth, size_boundary, different_values, sparsity_pattern)
     basis_functions_gradients = [x -> ForwardDiff.gradient(basis_functions[i], x) for i in 1:K]
@@ -273,7 +273,7 @@ function construct_multidimensional_function_space_operator(basis_functions, nod
     BV_cache = DiffCache(copy(A))
     VTBV_cache = DiffCache(M)
     C_cache = DiffCache(copy(M))
-    p = (; V, V_xis, normals, moments, on_boundary, vol, S_cache, A_cache, SV_cache, PV_xi_cache, B_cache, BV_cache, C_cache, VTBV_cache, bandwidth, size_boundary, different_values, sparsity_pattern)
+    p = (; V, V_xis, normals, moments, boundary_indices, vol, S_cache, A_cache, SV_cache, PV_xi_cache, B_cache, BV_cache, C_cache, VTBV_cache, bandwidth, size_boundary, different_values, sparsity_pattern)
     if isnothing(x0)
         # x0 = zeros(T, d * L + N + N_boundary)
         x0 = [zeros(T, d * L); invsig.(1/N * ones(T, N)); zeros(T, N_boundary)]
@@ -294,7 +294,7 @@ function construct_multidimensional_function_space_operator(basis_functions, nod
     function create_D(i)
         sigma = x[(i - 1) * L + 1:(i * L)]
         S = SummationByPartsOperators.create_S(sigma, N, bandwidth, size_boundary, different_values, sparsity_pattern)
-        B = create_B(weights_boundary, normals, on_boundary, i)
+        B = create_B(N, weights_boundary, normals, boundary_indices, i)
         Q = S + B / 2
         D = inv(P) * Q
         return D
@@ -304,7 +304,7 @@ function construct_multidimensional_function_space_operator(basis_functions, nod
 end
 
 @views function SummationByPartsOperators.multidimensional_optimization_function(x, p)
-    (; V, V_xis, normals, moments, on_boundary, vol, S_cache, A_cache, SV_cache, PV_xi_cache, B_cache, BV_cache, C_cache, VTBV_cache, bandwidth, size_boundary, different_values, sparsity_pattern) = p
+    (; V, V_xis, normals, moments, boundary_indices, vol, S_cache, A_cache, SV_cache, PV_xi_cache, B_cache, BV_cache, C_cache, VTBV_cache, bandwidth, size_boundary, different_values, sparsity_pattern) = p
     S = get_tmp(S_cache, x)
     A = get_tmp(A_cache, x)
     SV = get_tmp(SV_cache, x)
@@ -328,7 +328,7 @@ end
         fill!(S, zero(eltype(S)))
         set_S!(S, sigma, N, bandwidth, size_boundary, different_values, sparsity_pattern)
         fill!(B, zero(eltype(B)))
-        set_B!(B, phi, normals, on_boundary, i)
+        set_B!(B, phi, normals, boundary_indices, i)
         mul!(SV, S, V)
         mul!(PV_xi, P, V_xi)
         mul!(BV, B, V)

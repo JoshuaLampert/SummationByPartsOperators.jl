@@ -93,10 +93,10 @@ end
                 @testset "multidimensional_function_space_operator" verbose = true begin
                     basis = [x -> x[1]^i for i in 0:(n-1)]
                     nodes = SVector.(nodes)
-                    on_boundary = [[true]; zeros(Bool, n - 2); [true]]
+                    boundary_indices = [1, n]
                     normals = [SVector(-1.0), SVector(1.0)]
                     moments = compute_moments(basis, nodes, normals)
-                    D = multidimensional_function_space_operator(basis, nodes, on_boundary, normals, moments, vol,
+                    D = multidimensional_function_space_operator(basis, nodes, boundary_indices, normals, moments, vol,
                                                                  GlaubitzIskeLampertÖffner2024();
                                                                  verbose, opt_kwargs...)
                     @test isapprox(Matrix(D[1]), Matrix(D_legendre); atol) # equal
@@ -104,7 +104,7 @@ end
                     @test isapprox(mass_matrix_boundary(D, 1), compute_boundary_matrix(n); atol) # equal
 
                     sparsity_pattern = get_sparsity_pattern(D)
-                    D_sparsity_pattern = multidimensional_function_space_operator(basis, nodes, on_boundary, normals, moments, vol,
+                    D_sparsity_pattern = multidimensional_function_space_operator(basis, nodes, boundary_indices, normals, moments, vol,
                                                                                   GlaubitzIskeLampertÖffner2024();
                                                                                   sparsity_pattern,
                                                                                   verbose, opt_kwargs...)
@@ -138,10 +138,10 @@ end
                 @testset "multidimensional_function_space_operator" verbose = true begin
                     basis = [x -> x[1]^i for i in 0:div(p, 2)]
                     nodes = SVector.(nodes)
-                    on_boundary = [[true]; zeros(Bool, N - 2); [true]]
+                    boundary_indices = [1, N]
                     normals = [SVector(-1.0), SVector(1.0)]
                     moments = compute_moments(basis, nodes, normals)
-                    D = multidimensional_function_space_operator(basis, nodes, on_boundary, normals, moments, vol,
+                    D = multidimensional_function_space_operator(basis, nodes, boundary_indices, normals, moments, vol,
                                                                  GlaubitzIskeLampertÖffner2024();
                                                                  bandwidth, size_boundary, different_values,
                                                                  verbose, opt_kwargs...)
@@ -198,10 +198,10 @@ end
                 @testset "multidimensional_function_space_operator" verbose = true begin
                     basis = [x -> x[1]^i for i in 0:div(p, 2)]
                     nodes = SVector.(nodes)
-                    on_boundary = [[true]; zeros(Bool, N - 2); [true]]
+                    boundary_indices = [1, N]
                     normals = [SVector(-1.0), SVector(1.0)]
                     moments = compute_moments(basis, nodes, normals)
-                    D = multidimensional_function_space_operator(basis, nodes, on_boundary, normals, moments, vol,
+                    D = multidimensional_function_space_operator(basis, nodes, boundary_indices, normals, moments, vol,
                                                                  GlaubitzIskeLampertÖffner2024();
                                                                  bandwidth, size_boundary, different_values,
                                                                  verbose, opt_kwargs...)
@@ -210,7 +210,7 @@ end
                     @test isapprox(mass_matrix_boundary(D, 1), compute_boundary_matrix(N); atol) # equal
 
                     x_poly = SummationByPartsOperators.get_multidimensional_optimization_entries(D_poly; bandwidth, size_boundary, different_values)
-                    D = multidimensional_function_space_operator(basis, nodes, on_boundary, normals, moments, vol,
+                    D = multidimensional_function_space_operator(basis, nodes, boundary_indices, normals, moments, vol,
                                                                  GlaubitzIskeLampertÖffner2024();
                                                                  bandwidth, size_boundary, different_values,
                                                                  verbose, opt_kwargs...,
@@ -223,7 +223,7 @@ end
 
                     sparsity_pattern = block_banded_sparsity_pattern(N, bandwidth, size_boundary)
                     @test all(get_sparsity_pattern(D) .== sparsity_pattern)
-                    D_sparsity_pattern = multidimensional_function_space_operator(basis, nodes, on_boundary, normals, moments, vol,
+                    D_sparsity_pattern = multidimensional_function_space_operator(basis, nodes, boundary_indices, normals, moments, vol,
                                                                                   GlaubitzIskeLampertÖffner2024();
                                                                                   sparsity_pattern,
                                                                                   verbose, opt_kwargs...)
@@ -233,7 +233,7 @@ end
 
                     # This neeeds only 1 iteration
                     x_poly_sparsity_pattern = SummationByPartsOperators.get_multidimensional_optimization_entries(D_poly; sparsity_pattern)
-                    D_sparsity_pattern_x0 = multidimensional_function_space_operator(basis, nodes, on_boundary, normals, moments, vol,
+                    D_sparsity_pattern_x0 = multidimensional_function_space_operator(basis, nodes, boundary_indices, normals, moments, vol,
                                                                                      GlaubitzIskeLampertÖffner2024();
                                                                                      sparsity_pattern,
                                                                                      verbose, opt_kwargs...,
@@ -275,10 +275,10 @@ end
         #     @testset "multidimensional_function_space_operator" verbose = true begin
         #         basis = [x -> x[1]^i for i in 0:div(p, 2)]
         #         nodes = SVector.(nodes)
-        #         on_boundary = [[true]; zeros(Bool, N - 2); [true]]
+        #         boundary_indices = [1, N]
         #         normals = [SVector(-1.0), SVector(1.0)]
         #         moments = compute_moments(basis, nodes, normals)
-        #         D = multidimensional_function_space_operator(basis, nodes, on_boundary, normals, moments, vol,
+        #         D = multidimensional_function_space_operator(basis, nodes, boundary_indices, normals, moments, vol,
         #                                                      GlaubitzIskeLampertÖffner2024();
         #                                                      bandwidth, size_boundary, different_values,
         #                                                      verbose, opt_kwargs...)
@@ -287,7 +287,7 @@ end
         #         @test isapprox(mass_matrix_boundary(D, 1), compute_boundary_matrix(N); atol) # equal
 
         #         x_poly = SummationByPartsOperators.get_multidimensional_optimization_entries(D_poly; bandwidth, size_boundary, different_values)
-        #         D = multidimensional_function_space_operator(basis, nodes, on_boundary, normals, moments, vol,
+        #         D = multidimensional_function_space_operator(basis, nodes, boundary_indices, normals, moments, vol,
         #                                                      GlaubitzIskeLampertÖffner2024();
     #                                                          bandwidth, size_boundary, different_values,
     #                                                          verbose, opt_kwargs...,
@@ -328,10 +328,10 @@ end
     #         @testset "multidimensional_function_space_operator" verbose = true begin
     #             basis = [x -> x[1]^i for i in 0:div(p, 2)]
     #             nodes = SVector.(nodes)
-    #             on_boundary = [[true]; zeros(Bool, N - 2); [true]]
+    #             boundary_indices = [1, N]
     #             normals = [SVector(-1.0), SVector(1.0)]
     #             moments = compute_moments(basis, nodes, normals)
-    #             D = multidimensional_function_space_operator(basis, nodes, on_boundary, normals, moments, vol,
+    #             D = multidimensional_function_space_operator(basis, nodes, boundary_indices, normals, moments, vol,
     #                                                          GlaubitzIskeLampertÖffner2024();
     #                                                          bandwidth, size_boundary, different_values,
     #                                                          verbose, opt_kwargs...)
@@ -340,7 +340,7 @@ end
     #             @test isapprox(mass_matrix_boundary(D, 1), compute_boundary_matrix(N); atol) # equal
 
     #             x_poly = SummationByPartsOperators.get_multidimensional_optimization_entries(D_poly; bandwidth, size_boundary, different_values)
-    #             D = multidimensional_function_space_operator(basis, nodes, on_boundary, normals, moments, vol,
+    #             D = multidimensional_function_space_operator(basis, nodes, boundary_indices, normals, moments, vol,
     #                                                          GlaubitzIskeLampertÖffner2024();
     #                                                          bandwidth, size_boundary, different_values,
     #                                                          verbose, opt_kwargs...,
@@ -376,10 +376,10 @@ end
     #         @testset "multidimensional_function_space_operator" verbose = true begin
     #             basis = [x -> x[1]^i for i in 0:div(p, 2)]
     #             nodes = SVector.(nodes)
-    #             on_boundary = [[true]; zeros(Bool, N - 2); [true]]
+    #             boundary_indices = [1, N]
     #             normals = [SVector(-1.0), SVector(1.0)]
     #             moments = compute_moments(basis, nodes, normals)
-    #             D = multidimensional_function_space_operator(basis, nodes, on_boundary, normals, moments, vol,
+    #             D = multidimensional_function_space_operator(basis, nodes, boundary_indices, normals, moments, vol,
     #                                                          GlaubitzIskeLampertÖffner2024();
     #                                                          bandwidth, size_boundary, different_values,
     #                                                          verbose, opt_kwargs...)
@@ -419,10 +419,10 @@ end
     #         @testset "multidimensional_function_space_operator" verbose = true begin
     #             basis = [x -> x[1]^i for i in 0:div(p, 2)]
     #             nodes = SVector.(nodes)
-    #             on_boundary = [[true]; zeros(Bool, N - 2); [true]]
+    #             boundary_indices = [1, N]
     #             normals = [SVector(-1.0), SVector(1.0)]
     #             moments = compute_moments(basis, nodes, normals)
-    #             D = multidimensional_function_space_operator(basis, nodes, on_boundary, normals, moments, vol,
+    #             D = multidimensional_function_space_operator(basis, nodes, boundary_indices, normals, moments, vol,
     #                                                         GlaubitzIskeLampertÖffner2024();
     #                                                         bandwidth, size_boundary, different_values,
     #                                                         verbose, opt_kwargs...)
@@ -431,7 +431,7 @@ end
     #             @test isapprox(mass_matrix_boundary(D, 1), compute_boundary_matrix(N); atol) # equal
 
     #             x_poly = SummationByPartsOperators.get_multidimensional_optimization_entries(D_poly; bandwidth, size_boundary, different_values)
-    #             D = multidimensional_function_space_operator(basis, nodes, on_boundary, normals, moments, vol,
+    #             D = multidimensional_function_space_operator(basis, nodes, boundary_indices, normals, moments, vol,
     #                                                         GlaubitzIskeLampertÖffner2024();
     #                                                         bandwidth, size_boundary, different_values,
     #                                                         verbose, opt_kwargs...,
@@ -474,10 +474,10 @@ end
     #         @testset "multidimensional_function_space_operator" verbose = true begin
     #             basis = [x -> x[1]^i for i in 0:div(p, 2)]
     #             nodes = SVector.(nodes)
-    #             on_boundary = [[true]; zeros(Bool, N - 2); [true]]
+    #             boundary_indices = [1, N]
     #             normals = [SVector(-1.0), SVector(1.0)]
     #             moments = compute_moments(basis, nodes, normals)
-    #             D = multidimensional_function_space_operator(basis, nodes, on_boundary, normals, moments, vol,
+    #             D = multidimensional_function_space_operator(basis, nodes, boundary_indices, normals, moments, vol,
     #                                                          GlaubitzIskeLampertÖffner2024();
     #                                                          bandwidth, size_boundary, different_values,
     #                                                          verbose, opt_kwargs...)
@@ -486,7 +486,7 @@ end
     #             @test isapprox(mass_matrix_boundary(D, 1), compute_boundary_matrix(N); atol) # equal
 
     #             x_poly = SummationByPartsOperators.get_multidimensional_optimization_entries(D_poly; bandwidth, size_boundary, different_values)
-    #             D = multidimensional_function_space_operator(basis, nodes, on_boundary, normals, moments, vol,
+    #             D = multidimensional_function_space_operator(basis, nodes, boundary_indices, normals, moments, vol,
     #                                                          GlaubitzIskeLampertÖffner2024();
     #                                                          bandwidth, size_boundary, different_values,
     #                                                          verbose, opt_kwargs...,
@@ -529,10 +529,10 @@ end
     #         @testset "multidimensional_function_space_operator" verbose = true begin
     #             basis = [x -> x[1]^i for i in 0:div(p, 2)]
     #             nodes = SVector.(nodes)
-    #             on_boundary = [[true]; zeros(Bool, N - 2); [true]]
+    #             boundary_indices = [1, N]
     #             normals = [SVector(-1.0), SVector(1.0)]
     #             moments = compute_moments(basis, nodes, normals)
-    #             D = multidimensional_function_space_operator(basis, nodes, on_boundary, normals, moments, vol,
+    #             D = multidimensional_function_space_operator(basis, nodes, boundary_indices, normals, moments, vol,
     #                                                          GlaubitzIskeLampertÖffner2024();
     #                                                          bandwidth, size_boundary, different_values,
     #                                                          verbose, opt_kwargs...)
@@ -541,7 +541,7 @@ end
     #             @test isapprox(mass_matrix_boundary(D, 1), compute_boundary_matrix(N); atol) # equal
 
     #             x_poly = SummationByPartsOperators.get_multidimensional_optimization_entries(D_poly; bandwidth, size_boundary, different_values)
-    #             D = multidimensional_function_space_operator(basis, nodes, on_boundary, normals, moments, vol,
+    #             D = multidimensional_function_space_operator(basis, nodes, boundary_indices, normals, moments, vol,
     #                                                          GlaubitzIskeLampertÖffner2024();
     #                                                          bandwidth, size_boundary, different_values,
     #                                                          verbose, opt_kwargs...,
