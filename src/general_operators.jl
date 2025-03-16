@@ -285,6 +285,7 @@ end
 
 """
     integrate_boundary([func = identity,] u, D::AbstractDerivativeOperator)
+
 Map the function `func` to the coefficients `u` and integrate along the boundary. For classical 1D
 operators this is `func(u[end]) - func(u[begin])`. For periodic 1D operators this is zero.
 """
@@ -300,6 +301,7 @@ integrate_boundary(u, D) = integrate_boundary(identity, u, D)
 
 """
     restrict_boundary(u, D::AbstractDerivativeOperator)
+
 Restrict the coefficients `u` to the boundary nodes of the derivative operator `D`.
 """
 restrict_boundary(u, D::AbstractNonperiodicDerivativeOperator) = u[[begin, end]]
@@ -308,6 +310,7 @@ restrict_boundary(u, D::AbstractPeriodicDerivativeOperator) = eltype(u)[]
 
 """
     mass_matrix_boundary(D::AbstractDerivativeOperator)
+
 Construct the mass matrix at the boundary of a derivative operator `D`. For classical 1D
 non-periodic operators, this is the matrix `Diagonal([-1, 0, ..., 0, 1])`. For periodic 1D
 operators this is the zero matrix.
