@@ -6,7 +6,8 @@ import ForwardDiff
 using SummationByPartsOperators: SummationByPartsOperators,
                                  GlaubitzNordströmÖffner2023, GlaubitzIskeLampertÖffner2024,
                                  MatrixDerivativeOperator,
-                                 MultidimensionalMatrixDerivativeOperator
+                                 MultidimensionalMatrixDerivativeOperator,
+                                 AbstractMultidimensionalMatrixDerivativeOperator
 using SummationByPartsOperators: get_nsigma # TODO: Only temporary
 using LinearAlgebra: Diagonal, UpperTriangular, LowerTriangular, dot, diag, norm, mul!,
                      issymmetric
@@ -235,7 +236,7 @@ function SummationByPartsOperators.multidimensional_function_space_operator(basi
                                                                             size_boundary = 2 *
                                                                                             bandwidth,
                                                                             different_values = true,
-                                                                            sparsity_pattern = nothing,
+                                                                            sparsity_patterns = nothing,
                                                                             opt_alg = LBFGS(),
                                                                             options = Options(g_tol = 1e-14,
                                                                                               iterations = 10000),
@@ -244,12 +245,14 @@ function SummationByPartsOperators.multidimensional_function_space_operator(basi
     if derivative_order != 1
         throw(ArgumentError("Derivative order $derivative_order not implemented."))
     end
-    if !isnothing(sparsity_pattern)
-        if !(sparsity_pattern isa UpperTriangular || issymmetric(sparsity_pattern)) ||
-           !all(diag(sparsity_pattern) .== 0)
-            throw(ArgumentError("Sparsity pattern has to be symmetric with all diagonal entries being false or `UpperTriangular`."))
+    if !isnothing(sparsity_patterns)
+        for sparsity_pattern in sparsity_patterns
+            if !(sparsity_pattern isa UpperTriangular || issymmetric(sparsity_pattern)) ||
+               !all(diag(sparsity_pattern) .== 0)
+                throw(ArgumentError("Sparsity patterns have to be symmetric with all diagonal entries being false or `UpperTriangular`."))
+            end
         end
-        sparsity_pattern = UpperTriangular(sparsity_pattern)
+        sparsity_patterns = UpperTriangular.(sparsity_patterns)
     end
     if (length(nodes) < 2 * size_boundary + bandwidth || bandwidth < 1) &&
        (bandwidth != length(nodes) - 1)
@@ -269,7 +272,7 @@ function SummationByPartsOperators.multidimensional_function_space_operator(basi
                                                                                        bandwidth,
                                                                                        size_boundary,
                                                                                        different_values,
-                                                                                       sparsity_pattern,
+                                                                                       sparsity_patterns,
                                                                                        opt_alg,
                                                                                        options,
                                                                                        x0,
@@ -286,7 +289,7 @@ function construct_multidimensional_function_space_operator(basis_functions, nod
                                                             bandwidth = length(nodes) - 1,
                                                             size_boundary = 2 * bandwidth,
                                                             different_values = true,
-                                                            sparsity_pattern = nothing,
+                                                            sparsity_patterns = nothing,
                                                             opt_alg = LBFGS(),
                                                             options = Options(g_tol = 1e-14,
                                                                               iterations = 10000),
@@ -297,7 +300,12 @@ function construct_multidimensional_function_space_operator(basis_functions, nod
     N = length(nodes)
     N_boundary = length(boundary_indices)
     @assert length(normals)==N_boundary "You must provide normals for all boundary nodes (length(normals) = $(length(normals)), N_boundary = $N_boundary)."
-    L = get_nsigma(N; bandwidth, size_boundary, different_values, sparsity_pattern)
+    if isnothing(sparsity_patterns)
+        d = length(first(nodes))
+        sparsity_patterns = ntuple(_ -> nothing, d)
+    end
+    Ls = ntuple(i -> get_nsigma(N; bandwidth, size_boundary, different_values,
+                                sparsity_pattern = sparsity_patterns[i]), d)
     basis_functions_gradients = [x -> ForwardDiff.gradient(basis_functions[i], x)
                                  for i in 1:K]
     # TODO: Orthonormalize? What happens with moments? Need moments with respect to orthonormalized basis functions?
@@ -318,13 +326,13 @@ function construct_multidimensional_function_space_operator(basis_functions, nod
     C_cache = DiffCache(copy(M))
     p = (; V, V_xis, normals, moments, boundary_indices, vol, S_cache, A_cache, SV_cache,
          PV_xi_cache, B_cache, BV_cache, C_cache, VTBV_cache, bandwidth, size_boundary,
-         different_values, sparsity_pattern)
+         different_values, sparsity_patterns)
     if isnothing(x0)
-        # x0 = zeros(T, d * L + N + N_boundary)
-        x0 = [zeros(T, d * L); invsig.(1 / N * ones(T, N)); zeros(T, N_boundary)]
+        # x0 = zeros(T, sum(Ls) + N + N_boundary)
+        x0 = [zeros(T, sum(Ls)); invsig.(1 / N * ones(T, N)); zeros(T, N_boundary)]
     else
-        n_total = d * L + N + N_boundary
-        @assert length(x0)==n_total "Initial guess has be d * L + N + N_boundary = $n_total long, but got length $(length(x0))"
+        n_total = Ls[1] + N + N_boundary
+        @assert length(x0)==n_total "Initial guess has be sum(Ls) + N + N_boundary = $n_total long, but got length $(length(x0))"
     end
 
     f(x) = SummationByPartsOperators.multidimensional_optimization_function(x, p)
@@ -337,9 +345,9 @@ function construct_multidimensional_function_space_operator(basis_functions, nod
     weights = diag(P)
     weights_boundary = x[(end - N_boundary + 1):end] # = phi
     function create_D(i)
-        sigma = x[((i - 1) * L + 1):(i * L)]
+        sigma = x[((i - 1) * Ls[max(1, i - 1)] + 1):(i * Ls[i])]
         S = SummationByPartsOperators.create_S(sigma, N, bandwidth, size_boundary,
-                                               different_values, sparsity_pattern)
+                                               different_values, sparsity_patterns[i])
         B = create_B(N, weights_boundary, normals, boundary_indices, i)
         Q = S + B / 2
         D = inv(P) * Q
@@ -350,7 +358,7 @@ function construct_multidimensional_function_space_operator(basis_functions, nod
 end
 
 @views function SummationByPartsOperators.multidimensional_optimization_function(x, p)
-    (; V, V_xis, normals, moments, boundary_indices, vol, S_cache, A_cache, SV_cache, PV_xi_cache, B_cache, BV_cache, C_cache, VTBV_cache, bandwidth, size_boundary, different_values, sparsity_pattern) = p
+    (; V, V_xis, normals, moments, boundary_indices, vol, S_cache, A_cache, SV_cache, PV_xi_cache, B_cache, BV_cache, C_cache, VTBV_cache, bandwidth, size_boundary, different_values, sparsity_patterns) = p
     S = get_tmp(S_cache, x)
     A = get_tmp(A_cache, x)
     SV = get_tmp(SV_cache, x)
@@ -362,7 +370,8 @@ end
     d = length(V_xis)
     N = size(V, 1)
     N_boundary = length(normals)
-    L = get_nsigma(N; bandwidth, size_boundary, different_values, sparsity_pattern)
+    Ls = ntuple(i -> get_nsigma(N; bandwidth, size_boundary, different_values,
+                                sparsity_pattern = sparsity_patterns[i]), d)
     rho = x[(end - N - N_boundary + 1):(end - N_boundary)]
     phi = x[(end - N_boundary + 1):end]
     P = create_P(rho, vol)
@@ -370,9 +379,10 @@ end
     for i in 1:d
         M = moments[i]
         V_xi = V_xis[i]
-        sigma = x[((i - 1) * L + 1):(i * L)]
+        sigma = x[((i - 1) * Ls[max(1, i - 1)] + 1):(i * Ls[i])]
         fill!(S, zero(eltype(S)))
-        set_S!(S, sigma, N, bandwidth, size_boundary, different_values, sparsity_pattern)
+        set_S!(S, sigma, N, bandwidth, size_boundary, different_values,
+               sparsity_patterns[i])
         fill!(B, zero(eltype(B)))
         set_B!(B, phi, normals, boundary_indices, i)
         mul!(SV, S, V)
@@ -729,7 +739,7 @@ function get_optimization_entries_block_banded(D;
     # if sig is the logistic function, inverting the normalized logistic function is harder, but this still works
     # (eventhough it is not the exaxt inverse)
     rho = invsig.(p)
-    Matrix_D = if D isa MultidimensionalMatrixDerivativeOperator
+    Matrix_D = if D isa AbstractMultidimensionalMatrixDerivativeOperator
         Matrix(D[1])
     else
         Matrix(D)
@@ -783,7 +793,12 @@ function SummationByPartsOperators.get_multidimensional_optimization_entries(D;
                                                                              size_boundary = SummationByPartsOperators.lower_bandwidth(D) +
                                                                                              1,
                                                                              different_values = false,
-                                                                             sparsity_pattern = nothing)
+                                                                             sparsity_patterns = nothing)
+    if !isnothing(sparsity_patterns)
+        sparsity_pattern = sparsity_patterns[1]
+    else
+        sparsity_pattern = nothing
+    end
     sigmarho = SummationByPartsOperators.get_optimization_entries(D; bandwidth,
                                                                   size_boundary,
                                                                   different_values,
@@ -793,13 +808,18 @@ function SummationByPartsOperators.get_multidimensional_optimization_entries(D;
 end
 
 # This only works if the operator is 1D!
-function SummationByPartsOperators.get_multidimensional_optimization_entries(D::MultidimensionalMatrixDerivativeOperator;
+function SummationByPartsOperators.get_multidimensional_optimization_entries(D::AbstractMultidimensionalMatrixDerivativeOperator;
                                                                              bandwidth = div(SummationByPartsOperators.accuracy_order(D),
                                                                                              2),
                                                                              size_boundary = SummationByPartsOperators.lower_bandwidth(D) +
                                                                                              1,
                                                                              different_values = false,
-                                                                             sparsity_pattern = nothing)
+                                                                             sparsity_patterns = nothing)
+    if !isnothing(sparsity_patterns)
+        sparsity_pattern = sparsity_patterns[1]
+    else
+        sparsity_pattern = nothing
+    end
     sigmarho = SummationByPartsOperators.get_optimization_entries(D; bandwidth,
                                                                   size_boundary,
                                                                   different_values,

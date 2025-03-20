@@ -104,9 +104,10 @@ end
                     @test isapprox(mass_matrix_boundary(D, 1), compute_boundary_matrix(n); atol) # equal
 
                     sparsity_pattern = get_sparsity_pattern(D)
+                    sparsity_patterns = (sparsity_pattern,)
                     D_sparsity_pattern = multidimensional_function_space_operator(basis, nodes, boundary_indices, normals, moments, vol,
                                                                                   GlaubitzIskeLampertÖffner2024();
-                                                                                  sparsity_pattern,
+                                                                                  sparsity_patterns,
                                                                                   verbose, opt_kwargs...)
                     @test isapprox(Matrix(D_sparsity_pattern[1]), Matrix(D_legendre); atol) # equal
                     @test isapprox(mass_matrix(D_sparsity_pattern), mass_matrix(D_legendre); atol) # equal
@@ -223,19 +224,20 @@ end
 
                     sparsity_pattern = block_banded_sparsity_pattern(N, bandwidth, size_boundary)
                     @test all(get_sparsity_pattern(D) .== sparsity_pattern)
+                    sparsity_patterns = (sparsity_pattern,)
                     D_sparsity_pattern = multidimensional_function_space_operator(basis, nodes, boundary_indices, normals, moments, vol,
                                                                                   GlaubitzIskeLampertÖffner2024();
-                                                                                  sparsity_pattern,
+                                                                                  sparsity_patterns,
                                                                                   verbose, opt_kwargs...)
                     @test isapprox(Matrix(D_sparsity_pattern[1]), Matrix(D_poly); atol = 1e-1) # almost equal
                     @test isapprox(mass_matrix(D_sparsity_pattern), mass_matrix(D_poly); atol = 1e-2) # almost equal
                     @test isapprox(mass_matrix_boundary(D_sparsity_pattern, 1), compute_boundary_matrix(N); atol) # equal
 
                     # This neeeds only 1 iteration
-                    x_poly_sparsity_pattern = SummationByPartsOperators.get_multidimensional_optimization_entries(D_poly; sparsity_pattern)
+                    x_poly_sparsity_pattern = SummationByPartsOperators.get_multidimensional_optimization_entries(D_poly; sparsity_patterns)
                     D_sparsity_pattern_x0 = multidimensional_function_space_operator(basis, nodes, boundary_indices, normals, moments, vol,
                                                                                      GlaubitzIskeLampertÖffner2024();
-                                                                                     sparsity_pattern,
+                                                                                     sparsity_patterns,
                                                                                      verbose, opt_kwargs...,
                                                                                      x0 = x_poly_sparsity_pattern)
                     @test isapprox(Matrix(D_sparsity_pattern_x0[1]), Matrix(D_poly); atol) # equal
