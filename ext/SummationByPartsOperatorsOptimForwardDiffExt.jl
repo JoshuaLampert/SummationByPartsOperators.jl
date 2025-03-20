@@ -3,10 +3,13 @@ module SummationByPartsOperatorsOptimForwardDiffExt
 using Optim: Optim, Options, LBFGS, optimize, minimizer
 import ForwardDiff
 
-using SummationByPartsOperators: SummationByPartsOperators, GlaubitzNordströmÖffner2023, GlaubitzIskeLampertÖffner2024,
-                                 MatrixDerivativeOperator, MultidimensionalMatrixDerivativeOperator
+using SummationByPartsOperators: SummationByPartsOperators,
+                                 GlaubitzNordströmÖffner2023, GlaubitzIskeLampertÖffner2024,
+                                 MatrixDerivativeOperator,
+                                 MultidimensionalMatrixDerivativeOperator
 using SummationByPartsOperators: get_nsigma # TODO: Only temporary
-using LinearAlgebra: Diagonal, UpperTriangular, LowerTriangular, dot, diag, norm, mul!, issymmetric
+using LinearAlgebra: Diagonal, UpperTriangular, LowerTriangular, dot, diag, norm, mul!,
+                     issymmetric
 using SparseArrays: spzeros
 using PreallocationTools: DiffCache, get_tmp
 
@@ -23,7 +26,8 @@ function vandermonde_matrix(functions, nodes)
     return V
 end
 
-function SummationByPartsOperators.create_S(sigma, N, bandwidth, size_boundary, different_values, sparsity_pattern)
+function SummationByPartsOperators.create_S(sigma, N, bandwidth, size_boundary,
+                                            different_values, sparsity_pattern)
     S = zeros(eltype(sigma), N, N)
     set_S!(S, sigma, N, bandwidth, size_boundary, different_values, sparsity_pattern)
     return S
@@ -64,7 +68,8 @@ function set_banded!(D, sigma, bandwidth, init_k = 1, different_values = true)
     return k
 end
 
-function set_triangular!(C, sigma, bandwidth, size_boundary = 2 * bandwidth, init_k = 1, different_values = true)
+function set_triangular!(C, sigma, bandwidth, size_boundary = 2 * bandwidth, init_k = 1,
+                         different_values = true)
     N = size(C, 1)
     k = init_k
     if different_values
@@ -88,7 +93,8 @@ end
 
 permute_rows_and_cols(P) = P[size(P, 1):-1:1, size(P, 2):-1:1]
 
-@views function set_S_block_banded!(S, sigma, N, bandwidth, size_boundary = 2 * bandwidth, different_values = true)
+@views function set_S_block_banded!(S, sigma, N, bandwidth, size_boundary = 2 * bandwidth,
+                                    different_values = true)
     if bandwidth == N - 1
         set_skew_symmetric!(S, sigma)
     else
@@ -128,7 +134,8 @@ permute_rows_and_cols(P) = P[size(P, 1):-1:1, size(P, 2):-1:1]
     end
 end
 
-function set_S!(S, sigma, N, bandwidth, size_boundary = 2 * bandwidth, different_values = true, sparsity_pattern = nothing)
+function set_S!(S, sigma, N, bandwidth, size_boundary = 2 * bandwidth,
+                different_values = true, sparsity_pattern = nothing)
     fill!(S, zero(eltype(sigma)))
     if isnothing(sparsity_pattern)
         set_S_block_banded!(S, sigma, N, bandwidth, size_boundary, different_values)
@@ -184,8 +191,10 @@ function set_B!(B, phi, normals, boundary_indices, dim)
     end
 end
 
-
-function SummationByPartsOperators.get_nsigma(N; bandwidth = N - 1, size_boundary = 2 * bandwidth, different_values = true, sparsity_pattern = nothing)
+function SummationByPartsOperators.get_nsigma(N; bandwidth = N - 1,
+                                              size_boundary = 2 * bandwidth,
+                                              different_values = true,
+                                              sparsity_pattern = nothing)
     if isnothing(sparsity_pattern)
         if bandwidth == N - 1
             # whole upper right triangle
@@ -213,54 +222,88 @@ function SummationByPartsOperators.get_nsigma(N; bandwidth = N - 1, size_boundar
     end
 end
 
-function SummationByPartsOperators.multidimensional_function_space_operator(basis_functions, nodes, boundary_indices, normals, moments, vol,
+function SummationByPartsOperators.multidimensional_function_space_operator(basis_functions,
+                                                                            nodes,
+                                                                            boundary_indices,
+                                                                            normals,
+                                                                            moments, vol,
                                                                             source::SourceOfCoefficients;
-                                                                            derivative_order = 1, accuracy_order = 0, bandwidth = length(nodes) - 1,
-                                                                            size_boundary = 2 * bandwidth, different_values = true,
+                                                                            derivative_order = 1,
+                                                                            accuracy_order = 0,
+                                                                            bandwidth = length(nodes) -
+                                                                                        1,
+                                                                            size_boundary = 2 *
+                                                                                            bandwidth,
+                                                                            different_values = true,
                                                                             sparsity_pattern = nothing,
-                                                                            opt_alg = LBFGS(), options = Options(g_tol = 1e-14, iterations = 10000),
-                                                                            x0 = nothing, verbose = false) where {SourceOfCoefficients}
-
+                                                                            opt_alg = LBFGS(),
+                                                                            options = Options(g_tol = 1e-14,
+                                                                                              iterations = 10000),
+                                                                            x0 = nothing,
+                                                                            verbose = false) where {SourceOfCoefficients}
     if derivative_order != 1
         throw(ArgumentError("Derivative order $derivative_order not implemented."))
     end
     if !isnothing(sparsity_pattern)
-        if !(sparsity_pattern isa UpperTriangular || issymmetric(sparsity_pattern)) || !all(diag(sparsity_pattern) .== 0)
+        if !(sparsity_pattern isa UpperTriangular || issymmetric(sparsity_pattern)) ||
+           !all(diag(sparsity_pattern) .== 0)
             throw(ArgumentError("Sparsity pattern has to be symmetric with all diagonal entries being false or `UpperTriangular`."))
         end
         sparsity_pattern = UpperTriangular(sparsity_pattern)
     end
-    if (length(nodes) < 2 * size_boundary + bandwidth || bandwidth < 1) && (bandwidth != length(nodes) - 1)
+    if (length(nodes) < 2 * size_boundary + bandwidth || bandwidth < 1) &&
+       (bandwidth != length(nodes) - 1)
         throw(ArgumentError("2 * size_boundary + bandwidth = $(2 * size_boundary + bandwidth) needs to be smaller than or equal to N = $(length(nodes)) and bandwidth = $bandwidth needs to be at least 1."))
     end
     # For now, we assume there are no repeated boundary indices, i.e., no nodes are in corners
     if length(unique(boundary_indices)) != length(boundary_indices)
         throw(ArgumentError("The boundary indices should be unique"))
     end
-    weights, weights_boundary, Ds = construct_multidimensional_function_space_operator(basis_functions, nodes, boundary_indices, normals, moments, vol, source;
-                                                                                       bandwidth, size_boundary, different_values, sparsity_pattern,
-                                                                                       opt_alg, options, x0, verbose)
-    return MultidimensionalMatrixDerivativeOperator(nodes, boundary_indices, normals, weights, weights_boundary, Ds, accuracy_order, source)
+    weights, weights_boundary, Ds = construct_multidimensional_function_space_operator(basis_functions,
+                                                                                       nodes,
+                                                                                       boundary_indices,
+                                                                                       normals,
+                                                                                       moments,
+                                                                                       vol,
+                                                                                       source;
+                                                                                       bandwidth,
+                                                                                       size_boundary,
+                                                                                       different_values,
+                                                                                       sparsity_pattern,
+                                                                                       opt_alg,
+                                                                                       options,
+                                                                                       x0,
+                                                                                       verbose)
+    return MultidimensionalMatrixDerivativeOperator(nodes, boundary_indices, normals,
+                                                    weights, weights_boundary, Ds,
+                                                    accuracy_order, source)
 end
 
-function construct_multidimensional_function_space_operator(basis_functions, nodes, boundary_indices, normals, moments, vol,
+function construct_multidimensional_function_space_operator(basis_functions, nodes,
+                                                            boundary_indices, normals,
+                                                            moments, vol,
                                                             ::GlaubitzIskeLampertÖffner2024;
                                                             bandwidth = length(nodes) - 1,
-                                                            size_boundary = 2 * bandwidth, different_values = true,
+                                                            size_boundary = 2 * bandwidth,
+                                                            different_values = true,
                                                             sparsity_pattern = nothing,
-                                                            opt_alg = LBFGS(), options = Options(g_tol = 1e-14, iterations = 10000),
+                                                            opt_alg = LBFGS(),
+                                                            options = Options(g_tol = 1e-14,
+                                                                              iterations = 10000),
                                                             x0 = nothing, verbose = false)
     T = typeof(basis_functions[1](nodes[1]))
     d = length(first(nodes))
     K = length(basis_functions)
     N = length(nodes)
     N_boundary = length(boundary_indices)
-    @assert length(normals) == N_boundary "You must provide normals for all boundary nodes (length(normals) = $(length(normals)), N_boundary = $N_boundary)."
+    @assert length(normals)==N_boundary "You must provide normals for all boundary nodes (length(normals) = $(length(normals)), N_boundary = $N_boundary)."
     L = get_nsigma(N; bandwidth, size_boundary, different_values, sparsity_pattern)
-    basis_functions_gradients = [x -> ForwardDiff.gradient(basis_functions[i], x) for i in 1:K]
+    basis_functions_gradients = [x -> ForwardDiff.gradient(basis_functions[i], x)
+                                 for i in 1:K]
     # TODO: Orthonormalize? What happens with moments? Need moments with respect to orthonormalized basis functions?
     V = vandermonde_matrix(basis_functions, nodes)
-    V_xis = ntuple(j -> vandermonde_matrix([x -> basis_functions_gradients[i](x)[j] for i in 1:K], nodes), d)
+    V_xis = ntuple(j -> vandermonde_matrix([x -> basis_functions_gradients[i](x)[j]
+                                            for i in 1:K], nodes), d)
 
     S = zeros(T, N, N)
     A = zeros(T, N, K)
@@ -273,13 +316,15 @@ function construct_multidimensional_function_space_operator(basis_functions, nod
     BV_cache = DiffCache(copy(A))
     VTBV_cache = DiffCache(M)
     C_cache = DiffCache(copy(M))
-    p = (; V, V_xis, normals, moments, boundary_indices, vol, S_cache, A_cache, SV_cache, PV_xi_cache, B_cache, BV_cache, C_cache, VTBV_cache, bandwidth, size_boundary, different_values, sparsity_pattern)
+    p = (; V, V_xis, normals, moments, boundary_indices, vol, S_cache, A_cache, SV_cache,
+         PV_xi_cache, B_cache, BV_cache, C_cache, VTBV_cache, bandwidth, size_boundary,
+         different_values, sparsity_pattern)
     if isnothing(x0)
         # x0 = zeros(T, d * L + N + N_boundary)
-        x0 = [zeros(T, d * L); invsig.(1/N * ones(T, N)); zeros(T, N_boundary)]
+        x0 = [zeros(T, d * L); invsig.(1 / N * ones(T, N)); zeros(T, N_boundary)]
     else
         n_total = d * L + N + N_boundary
-        @assert length(x0) == n_total "Initial guess has be d * L + N + N_boundary = $n_total long, but got length $(length(x0))"
+        @assert length(x0)==n_total "Initial guess has be d * L + N + N_boundary = $n_total long, but got length $(length(x0))"
     end
 
     f(x) = SummationByPartsOperators.multidimensional_optimization_function(x, p)
@@ -292,8 +337,9 @@ function construct_multidimensional_function_space_operator(basis_functions, nod
     weights = diag(P)
     weights_boundary = x[(end - N_boundary + 1):end] # = phi
     function create_D(i)
-        sigma = x[(i - 1) * L + 1:(i * L)]
-        S = SummationByPartsOperators.create_S(sigma, N, bandwidth, size_boundary, different_values, sparsity_pattern)
+        sigma = x[((i - 1) * L + 1):(i * L)]
+        S = SummationByPartsOperators.create_S(sigma, N, bandwidth, size_boundary,
+                                               different_values, sparsity_pattern)
         B = create_B(N, weights_boundary, normals, boundary_indices, i)
         Q = S + B / 2
         D = inv(P) * Q
@@ -324,7 +370,7 @@ end
     for i in 1:d
         M = moments[i]
         V_xi = V_xis[i]
-        sigma = x[(i - 1) * L + 1:(i * L)]
+        sigma = x[((i - 1) * L + 1):(i * L)]
         fill!(S, zero(eltype(S)))
         set_S!(S, sigma, N, bandwidth, size_boundary, different_values, sparsity_pattern)
         fill!(B, zero(eltype(B)))
@@ -340,31 +386,43 @@ end
     return res
 end
 
-function SummationByPartsOperators.function_space_operator(basis_functions, nodes::Vector{T},
+function SummationByPartsOperators.function_space_operator(basis_functions,
+                                                           nodes::Vector{T},
                                                            source::SourceOfCoefficients;
-                                                           derivative_order = 1, accuracy_order = 0, bandwidth = length(nodes) - 1,
-                                                           size_boundary = 2 * bandwidth, different_values = true,
+                                                           derivative_order = 1,
+                                                           accuracy_order = 0,
+                                                           bandwidth = length(nodes) - 1,
+                                                           size_boundary = 2 * bandwidth,
+                                                           different_values = true,
                                                            sparsity_pattern = nothing,
-                                                           opt_alg = LBFGS(), options = Options(g_tol = 1e-14, iterations = 10000),
-                                                           x0 = nothing, verbose = false) where {T, SourceOfCoefficients}
-
+                                                           opt_alg = LBFGS(),
+                                                           options = Options(g_tol = 1e-14,
+                                                                             iterations = 10000),
+                                                           x0 = nothing,
+                                                           verbose = false) where {T,
+                                                                                   SourceOfCoefficients
+                                                                                   }
     if derivative_order != 1
         throw(ArgumentError("Derivative order $derivative_order not implemented."))
     end
     if !isnothing(sparsity_pattern)
-        if !(sparsity_pattern isa UpperTriangular || issymmetric(sparsity_pattern)) || !all(diag(sparsity_pattern) .== 0)
+        if !(sparsity_pattern isa UpperTriangular || issymmetric(sparsity_pattern)) ||
+           !all(diag(sparsity_pattern) .== 0)
             throw(ArgumentError("Sparsity pattern has to be symmetric with all diagonal entries being false or `UpperTriangular`."))
         end
         sparsity_pattern = UpperTriangular(sparsity_pattern)
     end
-    if (length(nodes) < 2 * size_boundary + bandwidth || bandwidth < 1) && (bandwidth != length(nodes) - 1)
+    if (length(nodes) < 2 * size_boundary + bandwidth || bandwidth < 1) &&
+       (bandwidth != length(nodes) - 1)
         throw(ArgumentError("2 * size_boundary + bandwidth = $(2 * size_boundary + bandwidth) needs to be smaller than or equal to N = $(length(nodes)) and bandwidth = $bandwidth needs to be at least 1."))
     end
     sort!(nodes)
     weights, D = construct_function_space_operator(basis_functions, nodes, source;
-                                                   bandwidth, size_boundary, different_values, sparsity_pattern,
+                                                   bandwidth, size_boundary,
+                                                   different_values, sparsity_pattern,
                                                    opt_alg, options, x0, verbose)
-    return MatrixDerivativeOperator(first(nodes), last(nodes), nodes, weights, D, accuracy_order, source)
+    return MatrixDerivativeOperator(first(nodes), last(nodes), nodes, weights, D,
+                                    accuracy_order, source)
 end
 
 function inner_H1(f, g, f_derivative, g_derivative, nodes)
@@ -372,7 +430,9 @@ function inner_H1(f, g, f_derivative, g_derivative, nodes)
 end
 norm_H1(f, f_derivative, nodes) = sqrt(inner_H1(f, f, f_derivative, f_derivative, nodes))
 
-call_orthonormal_basis_function(A, basis_functions, k, x) = sum([basis_functions[i](x)*A[k, i] for i in 1:k])
+function call_orthonormal_basis_function(A, basis_functions, k, x)
+    sum([basis_functions[i](x) * A[k, i] for i in 1:k])
+end
 
 # This will orthonormalize the basis functions using the Gram-Schmidt process to reduce the condition
 # number of the Vandermonde matrix. The matrix A transfers the old basis functions to the new orthonormalized by
@@ -386,20 +446,29 @@ function orthonormalize_gram_schmidt(basis_functions, basis_functions_derivative
     basis_functions_orthonormalized = Vector{Function}(undef, K)
     basis_functions_orthonormalized_derivatives = Vector{Function}(undef, K)
 
-    for k = 1:K
+    for k in 1:K
         A[k, k] = 1
-        for j = 1:k-1
+        for j in 1:(k - 1)
             g(x) = call_orthonormal_basis_function(A, basis_functions, j, x)
-            g_derivative(x) = call_orthonormal_basis_function(A, basis_functions_derivatives, j, x)
-            inner_product = inner_H1(basis_functions[k], g, basis_functions_derivatives[k], g_derivative, nodes)
+            function g_derivative(x)
+                call_orthonormal_basis_function(A, basis_functions_derivatives, j, x)
+            end
+            inner_product = inner_H1(basis_functions[k], g, basis_functions_derivatives[k],
+                                     g_derivative, nodes)
             norm_squared = inner_H1(g, g, g_derivative, g_derivative, nodes)
-            A[k, :] = A[k, :] - inner_product/norm_squared * A[j, :]
+            A[k, :] = A[k, :] - inner_product / norm_squared * A[j, :]
         end
 
-        basis_functions_orthonormalized[k] = x -> call_orthonormal_basis_function(A, basis_functions, k, x)
-        basis_functions_orthonormalized_derivatives[k] = x -> call_orthonormal_basis_function(A, basis_functions_derivatives, k, x)
+        basis_functions_orthonormalized[k] = x -> call_orthonormal_basis_function(A,
+                                                                                  basis_functions,
+                                                                                  k, x)
+        basis_functions_orthonormalized_derivatives[k] = x -> call_orthonormal_basis_function(A,
+                                                                                              basis_functions_derivatives,
+                                                                                              k,
+                                                                                              x)
         # Normalization
-        r = norm_H1(basis_functions_orthonormalized[k], basis_functions_orthonormalized_derivatives[k], nodes)
+        r = norm_H1(basis_functions_orthonormalized[k],
+                    basis_functions_orthonormalized_derivatives[k], nodes)
         A[k, :] = A[k, :] / r
     end
     return basis_functions_orthonormalized, basis_functions_orthonormalized_derivatives
@@ -408,15 +477,19 @@ end
 function construct_function_space_operator(basis_functions, nodes,
                                            ::GlaubitzNordströmÖffner2023;
                                            bandwidth = length(nodes) - 1,
-                                           size_boundary = 2 * bandwidth, different_values = true,
+                                           size_boundary = 2 * bandwidth,
+                                           different_values = true,
                                            sparsity_pattern = nothing,
-                                           opt_alg = LBFGS(), options = Options(g_tol = 1e-14, iterations = 10000),
+                                           opt_alg = LBFGS(),
+                                           options = Options(g_tol = 1e-14,
+                                                             iterations = 10000),
                                            x0 = nothing, verbose = false)
     K = length(basis_functions)
     N = length(nodes)
     L = get_nsigma(N; bandwidth, size_boundary, different_values, sparsity_pattern)
 
-    basis_functions_derivatives = [x -> ForwardDiff.derivative(basis_functions[i], x) for i in 1:K]
+    basis_functions_derivatives = [x -> ForwardDiff.derivative(basis_functions[i], x)
+                                   for i in 1:K]
     basis_functions_orthonormalized, basis_functions_orthonormalized_derivatives = orthonormalize_gram_schmidt(basis_functions,
                                                                                                                basis_functions_derivatives,
                                                                                                                nodes)
@@ -441,12 +514,13 @@ function construct_function_space_operator(basis_functions, nodes,
     PV_x_cache = DiffCache(PV_x)
     daij_dsigmak = zeros(eltype(nodes), N, K, L)
     daij_drhok = zeros(eltype(nodes), N, K, N)
-    p = (; V, V_x, R, x_length, S_cache, A_cache, SV_cache, PV_x_cache, bandwidth, size_boundary, different_values, sparsity_pattern, daij_dsigmak, daij_drhok)
+    p = (; V, V_x, R, x_length, S_cache, A_cache, SV_cache, PV_x_cache, bandwidth,
+         size_boundary, different_values, sparsity_pattern, daij_dsigmak, daij_drhok)
 
     if isnothing(x0)
-        x0 = [zeros(L); invsig.(1/N * ones(N))]
+        x0 = [zeros(L); invsig.(1 / N * ones(N))]
     else
-        @assert length(x0) == L + N "Initial guess has be L + N = $(L + N) long"
+        @assert length(x0)==L + N "Initial guess has be L + N = $(L + N) long"
     end
 
     if isnothing(sparsity_pattern) && bandwidth == N - 1
@@ -461,10 +535,11 @@ function construct_function_space_operator(basis_functions, nodes,
     x = minimizer(result)
     sigma = x[1:L]
     rho = x[(L + 1):end]
-    S = SummationByPartsOperators.create_S(sigma, N, bandwidth, size_boundary, different_values, sparsity_pattern)
+    S = SummationByPartsOperators.create_S(sigma, N, bandwidth, size_boundary,
+                                           different_values, sparsity_pattern)
     P = create_P(rho, x_length)
     weights = diag(P)
-    Q = S + B/2
+    Q = S + B / 2
     D = inv(P) * Q
     return weights, D
 end
@@ -513,7 +588,7 @@ end
                     if i + 1 <= l_tilde <= N
                         daij_dsigmak[i, j, k] += V[l_tilde, j]
                     else
-                        C = N^2 - 3*N + 2*i - 2*k + 1/4
+                        C = N^2 - 3 * N + 2 * i - 2 * k + 1 / 4
                         if C >= 0
                             D = sqrt(C)
                             D_plus_one_half = D + 0.5
@@ -537,7 +612,7 @@ end
             for j in axes(daij_drhok, 2)
                 for i in axes(daij_drhok, 1)
                     factor1 = x_length * V_x[i, j] / sum_sig_rho^2
-                    factor =  factor1 * sig_deriv_rho[k]
+                    factor = factor1 * sig_deriv_rho[k]
                     if k == i
                         daij_drhok[i, j, k] = -factor * (sum_sig_rho - sig_rho[k])
                     else
@@ -615,19 +690,21 @@ end
 # Helper function to get the entries to optimize for from other operators.
 # These can, e.g., be used to initialize the optimization problem.
 function SummationByPartsOperators.get_optimization_entries(D;
-                                                            bandwidth = div(SummationByPartsOperators.accuracy_order(D), 2),
-                                                            size_boundary = SummationByPartsOperators.lower_bandwidth(D) + 1,
+                                                            bandwidth = div(SummationByPartsOperators.accuracy_order(D),
+                                                                            2),
+                                                            size_boundary = SummationByPartsOperators.lower_bandwidth(D) +
+                                                                            1,
                                                             different_values = false,
                                                             sparsity_pattern = nothing)
     if isnothing(sparsity_pattern)
-        return get_optimization_entries_block_banded(D; bandwidth, size_boundary, different_values)
+        return get_optimization_entries_block_banded(D; bandwidth, size_boundary,
+                                                     different_values)
     else
         return get_optimization_entries_sparsity_pattern(D; sparsity_pattern)
     end
 end
 
 function get_optimization_entries_sparsity_pattern(D; sparsity_pattern)
-
     p = diag(SummationByPartsOperators.mass_matrix(D))
     rho = invsig.(p)
     Q = SummationByPartsOperators.mass_matrix(D) * Matrix(D)
@@ -640,8 +717,10 @@ function get_optimization_entries_sparsity_pattern(D; sparsity_pattern)
 end
 
 function get_optimization_entries_block_banded(D;
-                                               bandwidth = div(SummationByPartsOperators.accuracy_order(D), 2),
-                                               size_boundary = SummationByPartsOperators.lower_bandwidth(D) + 1,
+                                               bandwidth = div(SummationByPartsOperators.accuracy_order(D),
+                                                               2),
+                                               size_boundary = SummationByPartsOperators.lower_bandwidth(D) +
+                                                               1,
                                                different_values = false)
     b = bandwidth
     c = size_boundary
@@ -699,22 +778,32 @@ end
 
 # This only works if the operator is 1D!
 function SummationByPartsOperators.get_multidimensional_optimization_entries(D;
-                                                                             bandwidth = div(SummationByPartsOperators.accuracy_order(D), 2),
-                                                                             size_boundary = SummationByPartsOperators.lower_bandwidth(D) + 1,
+                                                                             bandwidth = div(SummationByPartsOperators.accuracy_order(D),
+                                                                                             2),
+                                                                             size_boundary = SummationByPartsOperators.lower_bandwidth(D) +
+                                                                                             1,
                                                                              different_values = false,
                                                                              sparsity_pattern = nothing)
-    sigmarho = SummationByPartsOperators.get_optimization_entries(D; bandwidth, size_boundary, different_values, sparsity_pattern)
+    sigmarho = SummationByPartsOperators.get_optimization_entries(D; bandwidth,
+                                                                  size_boundary,
+                                                                  different_values,
+                                                                  sparsity_pattern)
     phi = [1.0, 1.0]
     return [sigmarho; phi]
 end
 
 # This only works if the operator is 1D!
 function SummationByPartsOperators.get_multidimensional_optimization_entries(D::MultidimensionalMatrixDerivativeOperator;
-                                                                             bandwidth = div(SummationByPartsOperators.accuracy_order(D), 2),
-                                                                             size_boundary = SummationByPartsOperators.lower_bandwidth(D) + 1,
+                                                                             bandwidth = div(SummationByPartsOperators.accuracy_order(D),
+                                                                                             2),
+                                                                             size_boundary = SummationByPartsOperators.lower_bandwidth(D) +
+                                                                                             1,
                                                                              different_values = false,
                                                                              sparsity_pattern = nothing)
-    sigmarho = SummationByPartsOperators.get_optimization_entries(D; bandwidth, size_boundary, different_values, sparsity_pattern)
+    sigmarho = SummationByPartsOperators.get_optimization_entries(D; bandwidth,
+                                                                  size_boundary,
+                                                                  different_values,
+                                                                  sparsity_pattern)
     phi = D.weights_boundary
     return [sigmarho; phi]
 end
