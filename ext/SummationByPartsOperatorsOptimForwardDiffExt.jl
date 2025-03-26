@@ -812,27 +812,6 @@ function SummationByPartsOperators.get_multidimensional_optimization_entries(D;
     return [sigmarho; phi]
 end
 
-# function SummationByPartsOperators.get_multidimensional_optimization_entries(D::AbstractMultidimensionalMatrixDerivativeOperator{1};
-#                                                                              bandwidth = div(SummationByPartsOperators.accuracy_order(D),
-#                                                                                              2),
-#                                                                              size_boundary = SummationByPartsOperators.lower_bandwidth(D) +
-#                                                                                              1,
-#                                                                              different_values = false,
-#                                                                              sparsity_patterns = nothing)
-#     if !isnothing(sparsity_patterns)
-#         sparsity_pattern = sparsity_patterns[1]
-#     else
-#         sparsity_pattern = nothing
-#     end
-#     sigmarho = SummationByPartsOperators.get_optimization_entries(D; bandwidth,
-#                                                                   size_boundary,
-#                                                                   different_values,
-#                                                                   sparsity_pattern)
-#     v = D.weights_boundary
-#     phi = invsig_b.(v)
-#     return [sigmarho; phi]
-# end
-
 function SummationByPartsOperators.get_multidimensional_optimization_entries(D::AbstractMultidimensionalMatrixDerivativeOperator{Dim, T};
                                                                              bandwidth = div(SummationByPartsOperators.accuracy_order(D),
                                                                                              2),
