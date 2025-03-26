@@ -92,6 +92,16 @@ function set_triangular!(C, sigma, bandwidth, size_boundary = 2 * bandwidth, ini
     return k
 end
 
+function set_S!(S, sigma, N, bandwidth, size_boundary = 2 * bandwidth,
+                different_values = true, sparsity_pattern = nothing)
+    fill!(S, zero(eltype(sigma)))
+    if isnothing(sparsity_pattern)
+        set_S_block_banded!(S, sigma, N, bandwidth, size_boundary, different_values)
+    else
+        set_S_sparsity_pattern!(S, sigma, N, sparsity_pattern)
+    end
+end
+
 permute_rows_and_cols(P) = P[size(P, 1):-1:1, size(P, 2):-1:1]
 
 @views function set_S_block_banded!(S, sigma, N, bandwidth, size_boundary = 2 * bandwidth,
@@ -135,16 +145,6 @@ permute_rows_and_cols(P) = P[size(P, 1):-1:1, size(P, 2):-1:1]
     end
 end
 
-function set_S!(S, sigma, N, bandwidth, size_boundary = 2 * bandwidth,
-                different_values = true, sparsity_pattern = nothing)
-    fill!(S, zero(eltype(sigma)))
-    if isnothing(sparsity_pattern)
-        set_S_block_banded!(S, sigma, N, bandwidth, size_boundary, different_values)
-    else
-        set_S_sparsity_pattern!(S, sigma, N, sparsity_pattern)
-    end
-end
-
 function set_S_sparsity_pattern!(S, sigma, N, sparsity_pattern)
     k = 1
     for i in 1:N
@@ -171,6 +171,15 @@ invsig(p) = log(p / (1 - p))
 # sig_deriv(x) = exp(x)
 # invsig(p) = log(p)
 
+# For b, no sigmoid function seems to perform better
+sig_b(x) = x
+sig_b_deriv(x) = one(x)
+invsig_b(p) = p
+
+# sig_b(x) = 1 / (1 + exp(-x))
+# sig_deriv_b(x) = sig(x) * (1 - sig(x))
+# invsig_b(p) = log(p / (1 - p))
+
 function create_P(rho, vol)
     P = Diagonal(sig.(rho))
     P *= vol / sum(P)
@@ -185,10 +194,11 @@ function create_B(N, phi, normals, boundary_indices, dim)
 end
 
 function set_B!(B, phi, normals, boundary_indices, dim)
+    fill!(B, zero(eltype(B)))
     # here, we assume that the boundary_indices are unique
     for j in eachindex(boundary_indices)
         k = boundary_indices[j]
-        B[k, k] = phi[j] * normals[j][dim]
+        B[k, k] = sig_b(phi[j]) * normals[j][dim]
     end
 end
 
@@ -331,8 +341,8 @@ function construct_multidimensional_function_space_operator(basis_functions, nod
         # x0 = zeros(T, sum(Ls) + N + N_boundary)
         x0 = [zeros(T, sum(Ls)); invsig.(1 / N * ones(T, N)); zeros(T, N_boundary)]
     else
-        n_total = Ls[1] + N + N_boundary
-        @assert length(x0)==n_total "Initial guess has be sum(Ls) + N + N_boundary = $n_total long, but got length $(length(x0))"
+        n_total = sum(Ls) + N + N_boundary
+        @assert length(x0)==n_total "Initial guess has to be sum(Ls) + N + N_boundary = $n_total long, but got length $(length(x0))"
     end
 
     f(x) = SummationByPartsOperators.multidimensional_optimization_function(x, p)
@@ -343,7 +353,7 @@ function construct_multidimensional_function_space_operator(basis_functions, nod
     rho = x[(end - N - N_boundary + 1):(end - N_boundary)]
     P = create_P(rho, vol)
     weights = diag(P)
-    weights_boundary = x[(end - N_boundary + 1):end] # = phi
+    weights_boundary = sig_b.(x[(end - N_boundary + 1):end]) # v = sig_b(phi)
     function create_D(i)
         sigma = x[((i - 1) * Ls[max(1, i - 1)] + 1):(i * Ls[i])]
         S = SummationByPartsOperators.create_S(sigma, N, bandwidth, size_boundary,
@@ -380,10 +390,8 @@ end
         M = moments[i]
         V_xi = V_xis[i]
         sigma = x[((i - 1) * Ls[max(1, i - 1)] + 1):(i * Ls[i])]
-        fill!(S, zero(eltype(S)))
         set_S!(S, sigma, N, bandwidth, size_boundary, different_values,
                sparsity_patterns[i])
-        fill!(B, zero(eltype(B)))
         set_B!(B, phi, normals, boundary_indices, i)
         mul!(SV, S, V)
         mul!(PV_xi, P, V_xi)
@@ -706,27 +714,36 @@ function SummationByPartsOperators.get_optimization_entries(D;
                                                                             1,
                                                             different_values = false,
                                                             sparsity_pattern = nothing)
-    if isnothing(sparsity_pattern)
-        return get_optimization_entries_block_banded(D; bandwidth, size_boundary,
-                                                     different_values)
-    else
-        return get_optimization_entries_sparsity_pattern(D; sparsity_pattern)
-    end
-end
-
-function get_optimization_entries_sparsity_pattern(D; sparsity_pattern)
     p = diag(SummationByPartsOperators.mass_matrix(D))
+    # for sig = exp this is only equal to the values from the optimization up to a constant, but they give the same P
+    # if sig is the logistic function, inverting the normalized logistic function is harder, but this still works
+    # (eventhough it is not the exaxt inverse)
     rho = invsig.(p)
-    Q = SummationByPartsOperators.mass_matrix(D) * Matrix(D)
+    Matrix_D = if D isa AbstractMultidimensionalMatrixDerivativeOperator{1}
+        Matrix(D[1])
+    else
+        Matrix(D)
+    end
+    Q = SummationByPartsOperators.mass_matrix(D) * Matrix_D
     S = 0.5 * (Q - Q')
-    N = size(D, 1)
-    L = get_nsigma(N; sparsity_pattern)
-    sigma = zeros(L)
-    reconstruct_sparsity_pattern!(sigma, S, sparsity_pattern)
+    if isnothing(sparsity_pattern)
+        sigma = get_optimization_entries_block_banded(S; bandwidth, size_boundary,
+                                                      different_values)
+    else
+        sigma = get_optimization_entries_sparsity_pattern(S; sparsity_pattern)
+    end
     return [sigma; rho]
 end
 
-function get_optimization_entries_block_banded(D;
+function get_optimization_entries_sparsity_pattern(S; sparsity_pattern)
+    N = size(S, 1)
+    L = get_nsigma(N; sparsity_pattern)
+    sigma = zeros(L)
+    reconstruct_sparsity_pattern!(sigma, S, sparsity_pattern)
+    return sigma
+end
+
+function get_optimization_entries_block_banded(S;
                                                bandwidth = div(SummationByPartsOperators.accuracy_order(D),
                                                                2),
                                                size_boundary = SummationByPartsOperators.lower_bandwidth(D) +
@@ -734,19 +751,7 @@ function get_optimization_entries_block_banded(D;
                                                different_values = false)
     b = bandwidth
     c = size_boundary
-    p = diag(SummationByPartsOperators.mass_matrix(D))
-    # for sig = exp this is only equal to the values from the optimization up to a constant, but they give the same P
-    # if sig is the logistic function, inverting the normalized logistic function is harder, but this still works
-    # (eventhough it is not the exaxt inverse)
-    rho = invsig.(p)
-    Matrix_D = if D isa AbstractMultidimensionalMatrixDerivativeOperator
-        Matrix(D[1])
-    else
-        Matrix(D)
-    end
-    Q = SummationByPartsOperators.mass_matrix(D) * Matrix_D
-    S = 0.5 * (Q - Q')
-    N = size(D, 1)
+    N = size(S, 1)
     L = get_nsigma(N; bandwidth = b, size_boundary = c, different_values)
     sigma = zeros(L)
     if b == N - 1 # dense operator
@@ -783,10 +788,10 @@ function get_optimization_entries_block_banded(D;
             end
         end
     end
-    return [sigma; rho]
+    return sigma
 end
 
-# This only works if the operator is 1D!
+# For 1D operators
 function SummationByPartsOperators.get_multidimensional_optimization_entries(D;
                                                                              bandwidth = div(SummationByPartsOperators.accuracy_order(D),
                                                                                              2),
@@ -807,25 +812,52 @@ function SummationByPartsOperators.get_multidimensional_optimization_entries(D;
     return [sigmarho; phi]
 end
 
-# This only works if the operator is 1D!
-function SummationByPartsOperators.get_multidimensional_optimization_entries(D::AbstractMultidimensionalMatrixDerivativeOperator;
+# function SummationByPartsOperators.get_multidimensional_optimization_entries(D::AbstractMultidimensionalMatrixDerivativeOperator{1};
+#                                                                              bandwidth = div(SummationByPartsOperators.accuracy_order(D),
+#                                                                                              2),
+#                                                                              size_boundary = SummationByPartsOperators.lower_bandwidth(D) +
+#                                                                                              1,
+#                                                                              different_values = false,
+#                                                                              sparsity_patterns = nothing)
+#     if !isnothing(sparsity_patterns)
+#         sparsity_pattern = sparsity_patterns[1]
+#     else
+#         sparsity_pattern = nothing
+#     end
+#     sigmarho = SummationByPartsOperators.get_optimization_entries(D; bandwidth,
+#                                                                   size_boundary,
+#                                                                   different_values,
+#                                                                   sparsity_pattern)
+#     v = D.weights_boundary
+#     phi = invsig_b.(v)
+#     return [sigmarho; phi]
+# end
+
+function SummationByPartsOperators.get_multidimensional_optimization_entries(D::AbstractMultidimensionalMatrixDerivativeOperator{Dim, T};
                                                                              bandwidth = div(SummationByPartsOperators.accuracy_order(D),
                                                                                              2),
                                                                              size_boundary = SummationByPartsOperators.lower_bandwidth(D) +
                                                                                              1,
                                                                              different_values = false,
-                                                                             sparsity_patterns = nothing)
-    if !isnothing(sparsity_patterns)
-        sparsity_pattern = sparsity_patterns[1]
-    else
-        sparsity_pattern = nothing
+                                                                             sparsity_patterns = nothing) where {Dim, T}
+    p = D.weights
+    rho = invsig.(p)
+    v = D.weights_boundary
+    phi = invsig_b.(v)
+    sigmas = T[]
+    for i in 1:Dim
+        Q = SummationByPartsOperators.mass_matrix(D) * D[i]
+        S = 0.5 * (Q - Q')
+        if isnothing(sparsity_patterns)
+            sigma = get_optimization_entries_block_banded(S; bandwidth, size_boundary,
+                                                          different_values)
+        else
+            sparsity_pattern = sparsity_patterns[i]
+            sigma = get_optimization_entries_sparsity_pattern(S; sparsity_pattern)
+        end
+        append!(sigmas, sigma)
     end
-    sigmarho = SummationByPartsOperators.get_optimization_entries(D; bandwidth,
-                                                                  size_boundary,
-                                                                  different_values,
-                                                                  sparsity_pattern)
-    phi = D.weights_boundary
-    return [sigmarho; phi]
+    return [sigmas; rho; phi]
 end
 
 end # module

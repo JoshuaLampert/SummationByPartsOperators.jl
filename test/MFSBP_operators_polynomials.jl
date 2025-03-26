@@ -243,6 +243,8 @@ end
                     @test isapprox(Matrix(D_sparsity_pattern_x0[1]), Matrix(D_poly); atol) # equal
                     @test isapprox(mass_matrix(D_sparsity_pattern_x0), mass_matrix(D_poly); atol) # equal
                     @test isapprox(mass_matrix_boundary(D_sparsity_pattern_x0, 1), compute_boundary_matrix(N); atol) # equal
+                    x = SummationByPartsOperators.get_multidimensional_optimization_entries(D; bandwidth, size_boundary, different_values)
+                    @test isapprox(x, x_poly; atol)
                 end
             end
         end
