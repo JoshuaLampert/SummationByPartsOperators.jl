@@ -186,19 +186,22 @@ function create_P(rho, vol)
     return P
 end
 
-function create_B(N, phi, normals, boundary_indices, dim)
+function create_B(N, phi, normals, boundary_indices, dim; corners = ntuple(_ -> eltype(phi)[], dim))
     b = zeros(eltype(phi), N)
     B = Diagonal(b)
-    set_B!(B, phi, normals, boundary_indices, dim)
+    set_B!(B, phi, normals, boundary_indices, dim; corners)
     return B
 end
 
-function set_B!(B, phi, normals, boundary_indices, dim)
+function set_B!(B, phi, normals, boundary_indices, dim; corners = ntuple(_ -> eltype(phi)[], dim))
     fill!(B, zero(eltype(B)))
-    # here, we assume that the boundary_indices are unique
     for j in eachindex(boundary_indices)
         k = boundary_indices[j]
-        B[k, k] = sig_b(phi[j]) * normals[j][dim]
+        # If we have corners, we store multiple weights (boundary_indices is not unique)
+        # and we need to make sure to not overwrite the corner weights
+        if !(j in corners[dim])
+            B[k, k] = sig_b(phi[j]) * normals[j][dim]
+        end
     end
 end
 
@@ -247,6 +250,7 @@ function SummationByPartsOperators.multidimensional_function_space_operator(basi
                                                                                             bandwidth,
                                                                             different_values = true,
                                                                             sparsity_patterns = nothing,
+                                                                            corners = nothing,
                                                                             opt_alg = LBFGS(),
                                                                             options = Options(g_tol = 1e-14,
                                                                                               iterations = 10000),
@@ -268,10 +272,6 @@ function SummationByPartsOperators.multidimensional_function_space_operator(basi
        (bandwidth != length(nodes) - 1)
         throw(ArgumentError("2 * size_boundary + bandwidth = $(2 * size_boundary + bandwidth) needs to be smaller than or equal to N = $(length(nodes)) and bandwidth = $bandwidth needs to be at least 1."))
     end
-    # For now, we assume there are no repeated boundary indices, i.e., no nodes are in corners
-    if length(unique(boundary_indices)) != length(boundary_indices)
-        throw(ArgumentError("The boundary indices should be unique"))
-    end
     weights, weights_boundary, Ds = construct_multidimensional_function_space_operator(basis_functions,
                                                                                        nodes,
                                                                                        boundary_indices,
@@ -283,6 +283,7 @@ function SummationByPartsOperators.multidimensional_function_space_operator(basi
                                                                                        size_boundary,
                                                                                        different_values,
                                                                                        sparsity_patterns,
+                                                                                       corners,
                                                                                        opt_alg,
                                                                                        options,
                                                                                        x0,
@@ -300,6 +301,7 @@ function construct_multidimensional_function_space_operator(basis_functions, nod
                                                             size_boundary = 2 * bandwidth,
                                                             different_values = true,
                                                             sparsity_patterns = nothing,
+                                                            corners = nothing,
                                                             opt_alg = LBFGS(),
                                                             options = Options(g_tol = 1e-14,
                                                                               iterations = 10000),
@@ -313,6 +315,9 @@ function construct_multidimensional_function_space_operator(basis_functions, nod
     if isnothing(sparsity_patterns)
         d = length(first(nodes))
         sparsity_patterns = ntuple(_ -> nothing, d)
+    end
+    if isnothing(corners)
+        corners = ntuple(_ -> T[], d)
     end
     Ls = ntuple(i -> get_nsigma(N; bandwidth, size_boundary, different_values,
                                 sparsity_pattern = sparsity_patterns[i]), d)
@@ -336,10 +341,10 @@ function construct_multidimensional_function_space_operator(basis_functions, nod
     C_cache = DiffCache(copy(M))
     p = (; V, V_xis, normals, moments, boundary_indices, vol, S_cache, A_cache, SV_cache,
          PV_xi_cache, B_cache, BV_cache, C_cache, VTBV_cache, bandwidth, size_boundary,
-         different_values, sparsity_patterns)
+         different_values, sparsity_patterns, corners)
     if isnothing(x0)
         # x0 = zeros(T, sum(Ls) + N + N_boundary)
-        x0 = [zeros(T, sum(Ls)); invsig.(1 / N * ones(T, N)); zeros(T, N_boundary)]
+        x0 = [zeros(T, sum(Ls)); invsig.(1 / N * ones(T, N)); invsig_b(1 / N_boundary * ones(T, N_boundary))]
     else
         n_total = sum(Ls) + N + N_boundary
         @assert length(x0)==n_total "Initial guess has to be sum(Ls) + N + N_boundary = $n_total long, but got length $(length(x0))"
@@ -353,12 +358,13 @@ function construct_multidimensional_function_space_operator(basis_functions, nod
     rho = x[(end - N - N_boundary + 1):(end - N_boundary)]
     P = create_P(rho, vol)
     weights = diag(P)
-    weights_boundary = sig_b.(x[(end - N_boundary + 1):end]) # v = sig_b(phi)
+    phi = x[(end - N_boundary + 1):end]
+    weights_boundary = sig_b.(phi)
     function create_D(i)
-        sigma = x[((i - 1) * Ls[max(1, i - 1)] + 1):(i * Ls[i])]
+        sigma = x[sum(Ls[1:(i - 1)], init = 0) + 1:sum(Ls[1:i])]
         S = SummationByPartsOperators.create_S(sigma, N, bandwidth, size_boundary,
                                                different_values, sparsity_patterns[i])
-        B = create_B(N, weights_boundary, normals, boundary_indices, i)
+        B = create_B(N, weights_boundary, normals, boundary_indices, i; corners)
         Q = S + B / 2
         D = inv(P) * Q
         return D
@@ -368,7 +374,7 @@ function construct_multidimensional_function_space_operator(basis_functions, nod
 end
 
 @views function SummationByPartsOperators.multidimensional_optimization_function(x, p)
-    (; V, V_xis, normals, moments, boundary_indices, vol, S_cache, A_cache, SV_cache, PV_xi_cache, B_cache, BV_cache, C_cache, VTBV_cache, bandwidth, size_boundary, different_values, sparsity_patterns) = p
+    (; V, V_xis, normals, moments, boundary_indices, vol, S_cache, A_cache, SV_cache, PV_xi_cache, B_cache, BV_cache, C_cache, VTBV_cache, bandwidth, size_boundary, different_values, sparsity_patterns, corners) = p
     S = get_tmp(S_cache, x)
     A = get_tmp(A_cache, x)
     SV = get_tmp(SV_cache, x)
@@ -389,10 +395,10 @@ end
     for i in 1:d
         M = moments[i]
         V_xi = V_xis[i]
-        sigma = x[((i - 1) * Ls[max(1, i - 1)] + 1):(i * Ls[i])]
+        sigma = x[sum(Ls[1:(i - 1)], init = 0) + 1:sum(Ls[1:i])]
         set_S!(S, sigma, N, bandwidth, size_boundary, different_values,
                sparsity_patterns[i])
-        set_B!(B, phi, normals, boundary_indices, i)
+        set_B!(B, phi, normals, boundary_indices, i; corners)
         mul!(SV, S, V)
         mul!(PV_xi, P, V_xi)
         mul!(BV, B, V)
