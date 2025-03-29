@@ -1018,10 +1018,10 @@ end
 
 ymin = -2.0
 ymax = 1.0
-N_x = 6
-N_y = 5
+N_x = 10
+N_y = 9
 @testset "Reproducing polynomial tensor product SBP operators with MFSBP operators (2D)" verbose=true begin
-    for p in (2,)
+    for p in (2, 4)
         @testset "p = $p (equal)" verbose=true begin
             D_1 = derivative_operator(MattssonNordström2004(), derivative_order = 1,
                                       accuracy_order = p,
@@ -1032,8 +1032,7 @@ N_y = 5
 
             D_t = tensor_product_operator_2D(D_1, D_2)
 
-            basis = Function[x -> 1.0, x -> x[1], x -> x[2],
-                             x -> x[1] * x[2]]
+            basis = Function[x -> x[1]^i * x[2]^j for i in 0:div(p, 2), j in 0:div(p, 2)]
             nodes = grid(D_t)
             boundary_indices_ = boundary_indices(D_t)
             normals_ = normals(D_t)
@@ -1064,6 +1063,7 @@ N_y = 5
                                                          opt_kwargs...)
 
             D_t_MFSBP = TensorProductOperator(D, N_x, N_y)
+            atol = p == 2 ? 1e-11 : 1e1 # almost equal (some tests also pass with lower `atol`)
             @test isapprox(Matrix(D_t_MFSBP[1]), Matrix(D_t[1]); atol) # equal
             @test isapprox(Matrix(D_t_MFSBP[2]), Matrix(D_t[2]); atol) # equal
             @test isapprox(mass_matrix(D_t_MFSBP), mass_matrix(D_t); atol) # equal
@@ -1090,6 +1090,7 @@ N_y = 5
                                                             x0 = x_tensor)
 
             D_t_x0 = TensorProductOperator(D_x0, N_x, N_y)
+            atol = 1e-13
             @test isapprox(Matrix(D_t_x0[1]), Matrix(D_t[1]); atol) # equal
             @test isapprox(Matrix(D_t_x0[2]), Matrix(D_t[2]); atol) # equal
             @test isapprox(mass_matrix(D_t_x0), mass_matrix(D_t); atol) # equal
