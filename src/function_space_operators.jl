@@ -53,6 +53,12 @@ optimization algorithm, the options for the optimization problem, and the `autod
 the keyword arguments `opt_alg`, `options`, and `autodiff` respectively, see also the documentation of
 Optim.jl about [configurable options](https://julianlsolvers.github.io/Optim.jl/stable/user/config/)
 and [automatic differentiation](https://julianlsolvers.github.io/Optim.jl/stable/user/gradientsandhessians/#Automatic-differentiation).
+In this case, reverse mode automatic differentiation is usually significantly faster than forward mode.
+We recommend using `autodiff = ADTypes.AutoMooncake(; config = nothing)` or
+`autodiff = ADTypes.AutoEnzyme(; mode = Enzyme.Reverse, function_annotation = Enzyme.Duplicated)`. Note that
+you need to import the package `ADTypes` as well as the corresponding autodiff (i.e., `Mooncake` or `Enzyme`)
+package to use these modes.
+
 The initial guess for the optimization problem can be passed with the keyword argument `x0`, which is optional.
 If `nothing` is passed, a default initial guess (zeros for the entries of the differentiation matrix and
 equal values for all the weights) is used.
@@ -133,6 +139,12 @@ optimization algorithm, the options for the optimization problem, and the `autod
 the keyword arguments `opt_alg`, `options`, and `autodiff` respectively, see also the documentation of
 Optim.jl about [configurable options](https://julianlsolvers.github.io/Optim.jl/stable/user/config/)
 and [automatic differentiation](https://julianlsolvers.github.io/Optim.jl/stable/user/gradientsandhessians/#Automatic-differentiation).
+In this case, reverse mode automatic differentiation is usually significantly faster than forward mode.
+We recommend using `autodiff = ADTypes.AutoMooncake(; config = nothing)` or
+`autodiff = ADTypes.AutoEnzyme(; mode = Enzyme.Reverse, function_annotation = Enzyme.Duplicated)`. Note that
+you need to import the package `ADTypes` as well as the corresponding autodiff (i.e., `Mooncake` or `Enzyme`)
+package to use these modes.
+
 The initial guess for the optimization problem can be passed with the keyword argument `x0`, which is optional.
 If `nothing` is passed, a default initial guess (zeros for the entries of the differentiation matrix and
 equal values for all the weights and boundary weights) is used.
