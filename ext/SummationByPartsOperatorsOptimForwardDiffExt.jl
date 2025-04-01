@@ -186,14 +186,16 @@ function create_P(rho, vol)
     return P
 end
 
-function create_B(N, phi, normals, boundary_indices, dim; corners = ntuple(_ -> eltype(phi)[], dim))
+function create_B(N, phi, normals, boundary_indices, dim;
+                  corners = ntuple(_ -> eltype(phi)[], dim))
     b = zeros(eltype(phi), N)
     B = Diagonal(b)
     set_B!(B, phi, normals, boundary_indices, dim; corners)
     return B
 end
 
-function set_B!(B, phi, normals, boundary_indices, dim; corners = ntuple(_ -> eltype(phi)[], dim))
+function set_B!(B, phi, normals, boundary_indices, dim;
+                corners = ntuple(_ -> eltype(phi)[], dim))
     fill!(B, zero(eltype(B)))
     for j in eachindex(boundary_indices)
         k = boundary_indices[j]
@@ -254,6 +256,7 @@ function SummationByPartsOperators.multidimensional_function_space_operator(basi
                                                                             opt_alg = LBFGS(),
                                                                             options = Options(g_tol = 1e-14,
                                                                                               iterations = 10000),
+                                                                            autodiff = :forward,
                                                                             x0 = nothing,
                                                                             verbose = false) where {SourceOfCoefficients}
     if derivative_order != 1
@@ -286,6 +289,7 @@ function SummationByPartsOperators.multidimensional_function_space_operator(basi
                                                                                        corners,
                                                                                        opt_alg,
                                                                                        options,
+                                                                                       autodiff,
                                                                                        x0,
                                                                                        verbose)
     return MultidimensionalMatrixDerivativeOperator(nodes, boundary_indices, normals,
@@ -305,6 +309,7 @@ function construct_multidimensional_function_space_operator(basis_functions, nod
                                                             opt_alg = LBFGS(),
                                                             options = Options(g_tol = 1e-14,
                                                                               iterations = 10000),
+                                                            autodiff = :forward,
                                                             x0 = nothing, verbose = false)
     T = typeof(basis_functions[1](nodes[1]))
     d = length(first(nodes))
@@ -344,14 +349,15 @@ function construct_multidimensional_function_space_operator(basis_functions, nod
          different_values, sparsity_patterns, corners)
     if isnothing(x0)
         # x0 = zeros(T, sum(Ls) + N + N_boundary)
-        x0 = [zeros(T, sum(Ls)); invsig.(1 / N * ones(T, N)); invsig_b(1 / N_boundary * ones(T, N_boundary))]
+        x0 = [zeros(T, sum(Ls)); invsig.(1 / N * ones(T, N));
+              invsig_b(1 / N_boundary * ones(T, N_boundary))]
     else
         n_total = sum(Ls) + N + N_boundary
         @assert length(x0)==n_total "Initial guess has to be sum(Ls) + N + N_boundary = $n_total long, but got length $(length(x0))"
     end
 
     f(x) = SummationByPartsOperators.multidimensional_optimization_function(x, p)
-    result = optimize(f, x0, opt_alg, options; autodiff = :forward)
+    result = optimize(f, x0, opt_alg, options; autodiff)
     verbose && show(stdout, "text/plain", result)
 
     x = minimizer(result)
@@ -361,7 +367,7 @@ function construct_multidimensional_function_space_operator(basis_functions, nod
     phi = x[(end - N_boundary + 1):end]
     weights_boundary = sig_b.(phi)
     function create_D(i)
-        sigma = x[sum(Ls[1:(i - 1)], init = 0) + 1:sum(Ls[1:i])]
+        sigma = x[(sum(Ls[1:(i - 1)], init = 0) + 1):sum(Ls[1:i])]
         S = SummationByPartsOperators.create_S(sigma, N, bandwidth, size_boundary,
                                                different_values, sparsity_patterns[i])
         B = create_B(N, weights_boundary, normals, boundary_indices, i; corners)
@@ -395,7 +401,7 @@ end
     for i in 1:d
         M = moments[i]
         V_xi = V_xis[i]
-        sigma = x[sum(Ls[1:(i - 1)], init = 0) + 1:sum(Ls[1:i])]
+        sigma = x[(sum(Ls[1:(i - 1)], init = 0) + 1):sum(Ls[1:i])]
         set_S!(S, sigma, N, bandwidth, size_boundary, different_values,
                sparsity_patterns[i])
         set_B!(B, phi, normals, boundary_indices, i; corners)
@@ -422,6 +428,7 @@ function SummationByPartsOperators.function_space_operator(basis_functions,
                                                            opt_alg = LBFGS(),
                                                            options = Options(g_tol = 1e-14,
                                                                              iterations = 10000),
+                                                           autodiff = :forward,
                                                            x0 = nothing,
                                                            verbose = false) where {T,
                                                                                    SourceOfCoefficients
@@ -444,7 +451,7 @@ function SummationByPartsOperators.function_space_operator(basis_functions,
     weights, D = construct_function_space_operator(basis_functions, nodes, source;
                                                    bandwidth, size_boundary,
                                                    different_values, sparsity_pattern,
-                                                   opt_alg, options, x0, verbose)
+                                                   opt_alg, options, autodiff, x0, verbose)
     return MatrixDerivativeOperator(first(nodes), last(nodes), nodes, weights, D,
                                     accuracy_order, source)
 end
@@ -507,6 +514,7 @@ function construct_function_space_operator(basis_functions, nodes,
                                            opt_alg = LBFGS(),
                                            options = Options(g_tol = 1e-14,
                                                              iterations = 10000),
+                                           autodiff = :forward,
                                            x0 = nothing, verbose = false)
     K = length(basis_functions)
     N = length(nodes)
@@ -552,7 +560,7 @@ function construct_function_space_operator(basis_functions, nodes,
         result = optimize(Optim.only_fg!(fg!), x0, opt_alg, options)
     else
         f(x) = optimization_function(x, p)
-        result = optimize(f, x0, opt_alg, options, autodiff = :forward)
+        result = optimize(f, x0, opt_alg, options; autodiff)
     end
     verbose && display(result)
 
@@ -818,13 +826,17 @@ function SummationByPartsOperators.get_multidimensional_optimization_entries(D;
     return [sigmarho; phi]
 end
 
-function SummationByPartsOperators.get_multidimensional_optimization_entries(D::AbstractMultidimensionalMatrixDerivativeOperator{Dim, T};
+function SummationByPartsOperators.get_multidimensional_optimization_entries(D::AbstractMultidimensionalMatrixDerivativeOperator{Dim,
+                                                                                                                                 T};
                                                                              bandwidth = div(SummationByPartsOperators.accuracy_order(D),
                                                                                              2),
                                                                              size_boundary = SummationByPartsOperators.lower_bandwidth(D) +
                                                                                              1,
                                                                              different_values = false,
-                                                                             sparsity_patterns = nothing) where {Dim, T}
+                                                                             sparsity_patterns = nothing) where {
+                                                                                                                 Dim,
+                                                                                                                 T
+                                                                                                                 }
     p = D.weights
     rho = invsig.(p)
     v = D.weights_boundary
