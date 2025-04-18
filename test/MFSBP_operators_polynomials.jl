@@ -1041,8 +1041,8 @@ N_y = 9
             sparsity_patterns = get_sparsity_pattern(D_t)
 
             corners_x_dir = [N_y + 1, # lower left corner
-                N_x + N_y, # upper left corner
-                N_x + N_y + 1, # lower right corner
+                N_x + N_y, # lower right corner
+                N_x + N_y + 1, # upper left corner
                 2 * N_x + N_y] # upper right corner
             corners_y_dir = [1, # lower left corner
                 N_y,  # upper left corner

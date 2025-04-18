@@ -344,7 +344,7 @@ function construct_multidimensional_function_space_operator(basis_functions, nod
     BV_cache = DiffCache(copy(A))
     VTBV_cache = DiffCache(M)
     C_cache = DiffCache(copy(M))
-    p = (; V, V_xis, normals, moments, boundary_indices, vol, S_cache, A_cache, SV_cache,
+    p = (; Ls, vol, normals, moments, boundary_indices, V, V_xis, S_cache, A_cache, SV_cache,
          PV_xi_cache, B_cache, BV_cache, C_cache, VTBV_cache, bandwidth, size_boundary,
          different_values, sparsity_patterns, corners)
     if isnothing(x0)
@@ -361,13 +361,12 @@ function construct_multidimensional_function_space_operator(basis_functions, nod
     verbose && show(stdout, "text/plain", result)
 
     x = minimizer(result)
-    rho = x[(end - N - N_boundary + 1):(end - N_boundary)]
+    sigmas, rho, phi = split_x_multidimensional_function_space_operator(x, Ls, d, N, N_boundary)
     P = create_P(rho, vol)
     weights = diag(P)
-    phi = x[(end - N_boundary + 1):end]
     weights_boundary = sig_b.(phi)
     function create_D(i)
-        sigma = x[(sum(Ls[1:(i - 1)], init = 0) + 1):sum(Ls[1:i])]
+        sigma = sigmas[i]
         S = SummationByPartsOperators.create_S(sigma, N, bandwidth, size_boundary,
                                                different_values, sparsity_patterns[i])
         B = create_B(N, weights_boundary, normals, boundary_indices, i; corners)
@@ -380,33 +379,33 @@ function construct_multidimensional_function_space_operator(basis_functions, nod
 end
 
 @views function SummationByPartsOperators.multidimensional_optimization_function(x, p)
-    (; V, V_xis, normals, moments, boundary_indices, vol, S_cache, A_cache, SV_cache, PV_xi_cache, B_cache, BV_cache, C_cache, VTBV_cache, bandwidth, size_boundary, different_values, sparsity_patterns, corners) = p
+    (; Ls, vol, normals, moments, boundary_indices, V, V_xis, S_cache, SV_cache, PV_xi_cache, B_cache, BV_cache, A_cache, VTBV_cache, C_cache,
+    bandwidth, size_boundary, different_values, sparsity_patterns, corners) = p
+    d = length(V_xis)
+    N = size(V, 1)
+    N_boundary = length(normals)
+    sigmas, rho, phi = split_x_multidimensional_function_space_operator(x, Ls, d, N, N_boundary)
+
     S = get_tmp(S_cache, x)
-    A = get_tmp(A_cache, x)
     SV = get_tmp(SV_cache, x)
     PV_xi = get_tmp(PV_xi_cache, x)
     B = get_tmp(B_cache, x)
     BV = get_tmp(BV_cache, x)
+    A = get_tmp(A_cache, x)
     VTBV = get_tmp(VTBV_cache, x)
     C = get_tmp(C_cache, x)
-    d = length(V_xis)
-    N = size(V, 1)
-    N_boundary = length(normals)
-    Ls = ntuple(i -> get_nsigma(N; bandwidth, size_boundary, different_values,
-                                sparsity_pattern = sparsity_patterns[i]), d)
-    rho = x[(end - N - N_boundary + 1):(end - N_boundary)]
-    phi = x[(end - N_boundary + 1):end]
+
     P = create_P(rho, vol)
     res = 0.0
     for i in 1:d
         M = moments[i]
         V_xi = V_xis[i]
-        sigma = x[(sum(Ls[1:(i - 1)], init = 0) + 1):sum(Ls[1:i])]
+        sigma = sigmas[i]
         set_S!(S, sigma, N, bandwidth, size_boundary, different_values,
                sparsity_patterns[i])
-        set_B!(B, phi, normals, boundary_indices, i; corners)
         mul!(SV, S, V)
         mul!(PV_xi, P, V_xi)
+        set_B!(B, phi, normals, boundary_indices, i; corners)
         mul!(BV, B, V)
         @. A = SV - PV_xi + 0.5 * BV
         mul!(VTBV, V', BV)
@@ -414,6 +413,14 @@ end
         res += sum(abs2, A) + sum(abs2, C)
     end
     return res
+end
+
+# x = [sigma_1; ...; sigma_d; rho; phi]
+function split_x_multidimensional_function_space_operator(x, Ls, d, N, N_boundary)
+    sigmas = ntuple(i -> x[(sum(Ls[1:(i - 1)], init = 0) + 1):sum(Ls[1:i])], d)
+    rho = x[(end - N - N_boundary + 1):(end - N_boundary)]
+    phi = x[(end - N_boundary + 1):end]
+    return sigmas, rho, phi
 end
 
 function SummationByPartsOperators.function_space_operator(basis_functions,
@@ -580,7 +587,7 @@ end
 @views function optimization_function(x, p)
     (; L, x_length, V, V_x, R, S_cache, SV_cache, PV_x_cache, A_cache,
     bandwidth, size_boundary, different_values, sparsity_pattern) = p
-    (N, _) = size(R)
+    N = size(R, 1)
     sigma, rho = split_x_function_space_operator(x, L)
 
     S = get_tmp(S_cache, x)
@@ -588,18 +595,17 @@ end
     PV_x = get_tmp(PV_x_cache, x)
     A = get_tmp(A_cache, x)
     set_S!(S, sigma, N, bandwidth, size_boundary, different_values, sparsity_pattern)
-    P = create_P(rho, x_length)
     mul!(SV, S, V)
+    P = create_P(rho, x_length)
     mul!(PV_x, P, V_x)
     @. A = SV - PV_x + R
     return sum(abs2, A)
 end
 
 @views function optimization_function_and_grad!(F, G, x, p)
-    (; V, V_x, R, x_length, S_cache, A_cache, SV_cache, PV_x_cache, bandwidth,
+    (; L, x_length, V, V_x, R, S_cache, SV_cache, PV_x_cache, A_cache, bandwidth,
     daij_dsigmak, daij_drhok) = p
-    (N, _) = size(R)
-    L = div(N * (N - 1), 2)
+    N = size(R, 1)
     sigma, rho = split_x_function_space_operator(x, L)
 
     S = get_tmp(S_cache, x)
@@ -607,8 +613,8 @@ end
     PV_x = get_tmp(PV_x_cache, x)
     A = get_tmp(A_cache, x)
     set_S!(S, sigma, N, bandwidth)
-    P = create_P(rho, x_length)
     mul!(SV, S, V)
+    P = create_P(rho, x_length)
     mul!(PV_x, P, V_x)
     @. A = SV - PV_x + R
     if !isnothing(G)
