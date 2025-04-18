@@ -116,7 +116,7 @@ function Base.show(io::IO, source::GlaubitzIskeLampertÖffner2024)
       print(io,
           "Glaubitz, Iske, Lampert, Öffner (2024) \n",
           "  Efficient construction and application of multi-dimensional summation-by-parts operators \n",
-          "  to global radial basis function methodss \n",
+          "  to global radial basis function methods \n",
           "  TODO.")
   end
 end
