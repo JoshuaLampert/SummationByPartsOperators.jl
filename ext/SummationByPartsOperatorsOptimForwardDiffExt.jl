@@ -516,6 +516,7 @@ function construct_function_space_operator(basis_functions, nodes,
                                                              iterations = 10000),
                                            autodiff = :forward,
                                            x0 = nothing, verbose = false)
+    T = eltype(nodes)
     K = length(basis_functions)
     N = length(nodes)
     L = get_nsigma(N; bandwidth, size_boundary, different_values, sparsity_pattern)
@@ -530,24 +531,25 @@ function construct_function_space_operator(basis_functions, nodes,
     # Here, W satisfies W'*W = I
     # W = [V; -V_x]
 
-    B = spzeros(eltype(nodes), N, N)
+    B = spzeros(T, N, N)
     B[1, 1] = -1
     B[N, N] = 1
 
     R = B * V / 2
     x_length = last(nodes) - first(nodes)
-    S = zeros(eltype(nodes), N, N)
-    A = zeros(eltype(nodes), N, K)
-    SV = zeros(eltype(nodes), N, K)
-    PV_x = zeros(eltype(nodes), N, K)
+    S = zeros(T, N, N)
+    SV = zeros(T, N, K)
+    PV_x = zeros(T, N, K)
+    A = zeros(T, N, K)
     S_cache = DiffCache(S)
-    A_cache = DiffCache(A)
     SV_cache = DiffCache(SV)
     PV_x_cache = DiffCache(PV_x)
-    daij_dsigmak = zeros(eltype(nodes), N, K, L)
-    daij_drhok = zeros(eltype(nodes), N, K, N)
-    p = (; V, V_x, R, x_length, S_cache, A_cache, SV_cache, PV_x_cache, bandwidth,
-         size_boundary, different_values, sparsity_pattern, daij_dsigmak, daij_drhok)
+    A_cache = DiffCache(A)
+    daij_dsigmak = zeros(T, N, K, L)
+    daij_drhok = zeros(T, N, K, N)
+    p = (; L, x_length, V, V_x, R, S_cache, SV_cache, PV_x_cache, A_cache,
+         bandwidth, size_boundary, different_values, sparsity_pattern,
+         daij_dsigmak, daij_drhok)
 
     if isnothing(x0)
         x0 = [zeros(L); invsig.(1 / N * ones(N))]
@@ -565,8 +567,7 @@ function construct_function_space_operator(basis_functions, nodes,
     verbose && display(result)
 
     x = minimizer(result)
-    sigma = x[1:L]
-    rho = x[(L + 1):end]
+    sigma, rho = split_x_function_space_operator(x, L)
     S = SummationByPartsOperators.create_S(sigma, N, bandwidth, size_boundary,
                                            different_values, sparsity_pattern)
     P = create_P(rho, x_length)
@@ -577,15 +578,15 @@ function construct_function_space_operator(basis_functions, nodes,
 end
 
 @views function optimization_function(x, p)
-    (; V, V_x, R, x_length, S_cache, A_cache, SV_cache, PV_x_cache, bandwidth, size_boundary, different_values, sparsity_pattern) = p
+    (; L, x_length, V, V_x, R, S_cache, SV_cache, PV_x_cache, A_cache,
+    bandwidth, size_boundary, different_values, sparsity_pattern) = p
+    (N, _) = size(R)
+    sigma, rho = split_x_function_space_operator(x, L)
+
     S = get_tmp(S_cache, x)
-    A = get_tmp(A_cache, x)
     SV = get_tmp(SV_cache, x)
     PV_x = get_tmp(PV_x_cache, x)
-    (N, _) = size(R)
-    L = get_nsigma(N; bandwidth, size_boundary, different_values, sparsity_pattern)
-    sigma = x[1:L]
-    rho = x[(L + 1):end]
+    A = get_tmp(A_cache, x)
     set_S!(S, sigma, N, bandwidth, size_boundary, different_values, sparsity_pattern)
     P = create_P(rho, x_length)
     mul!(SV, S, V)
@@ -595,15 +596,16 @@ end
 end
 
 @views function optimization_function_and_grad!(F, G, x, p)
-    (; V, V_x, R, x_length, S_cache, A_cache, SV_cache, PV_x_cache, bandwidth, daij_dsigmak, daij_drhok) = p
-    S = get_tmp(S_cache, x)
-    A = get_tmp(A_cache, x)
-    SV = get_tmp(SV_cache, x)
-    PV_x = get_tmp(PV_x_cache, x)
+    (; V, V_x, R, x_length, S_cache, A_cache, SV_cache, PV_x_cache, bandwidth,
+    daij_dsigmak, daij_drhok) = p
     (N, _) = size(R)
     L = div(N * (N - 1), 2)
-    sigma = x[1:L]
-    rho = x[(L + 1):end]
+    sigma, rho = split_x_function_space_operator(x, L)
+
+    S = get_tmp(S_cache, x)
+    SV = get_tmp(SV_cache, x)
+    PV_x = get_tmp(PV_x_cache, x)
+    A = get_tmp(A_cache, x)
     set_S!(S, sigma, N, bandwidth)
     P = create_P(rho, x_length)
     mul!(SV, S, V)
@@ -661,9 +663,12 @@ end
         end
     end
     if !isnothing(F)
-        return norm(A)^2
+        return sum(abs2, A)
     end
 end
+
+# x = [sigma; rho]
+split_x_function_space_operator(x, L) = x[1:L], x[(L + 1):end]
 
 function reconstruct_sparsity_pattern!(sigma, S, sparsity_pattern)
     N = size(S, 1)
