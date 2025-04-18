@@ -337,16 +337,16 @@ function construct_multidimensional_function_space_operator(basis_functions, nod
     A = zeros(T, N, K)
     M = zeros(T, K, K)
     S_cache = DiffCache(S)
-    A_cache = DiffCache(A)
     SV_cache = DiffCache(copy(A))
     PV_xi_cache = DiffCache(copy(A))
     B_cache = DiffCache(copy(S))
     BV_cache = DiffCache(copy(A))
+    A_cache = DiffCache(A)
     VTBV_cache = DiffCache(M)
     C_cache = DiffCache(copy(M))
-    p = (; Ls, vol, normals, moments, boundary_indices, V, V_xis, S_cache, A_cache, SV_cache,
-         PV_xi_cache, B_cache, BV_cache, C_cache, VTBV_cache, bandwidth, size_boundary,
-         different_values, sparsity_patterns, corners)
+    p = (; Ls, vol, normals, moments, boundary_indices, V, V_xis,
+         S_cache, SV_cache, PV_xi_cache, B_cache, BV_cache, A_cache, VTBV_cache, C_cache,
+         bandwidth, size_boundary, different_values, sparsity_patterns, corners)
     if isnothing(x0)
         # x0 = zeros(T, sum(Ls) + N + N_boundary)
         x0 = [zeros(T, sum(Ls)); invsig.(1 / N * ones(T, N));
@@ -361,7 +361,8 @@ function construct_multidimensional_function_space_operator(basis_functions, nod
     verbose && show(stdout, "text/plain", result)
 
     x = minimizer(result)
-    sigmas, rho, phi = split_x_multidimensional_function_space_operator(x, Ls, d, N, N_boundary)
+    sigmas, rho, phi = split_x_multidimensional_function_space_operator(x, Ls, d, N,
+                                                                        N_boundary)
     P = create_P(rho, vol)
     weights = diag(P)
     weights_boundary = sig_b.(phi)
@@ -379,12 +380,14 @@ function construct_multidimensional_function_space_operator(basis_functions, nod
 end
 
 @views function SummationByPartsOperators.multidimensional_optimization_function(x, p)
-    (; Ls, vol, normals, moments, boundary_indices, V, V_xis, S_cache, SV_cache, PV_xi_cache, B_cache, BV_cache, A_cache, VTBV_cache, C_cache,
+    (; Ls, vol, normals, moments, boundary_indices, V, V_xis,
+    S_cache, SV_cache, PV_xi_cache, B_cache, BV_cache, A_cache, VTBV_cache, C_cache,
     bandwidth, size_boundary, different_values, sparsity_patterns, corners) = p
     d = length(V_xis)
     N = size(V, 1)
     N_boundary = length(normals)
-    sigmas, rho, phi = split_x_multidimensional_function_space_operator(x, Ls, d, N, N_boundary)
+    sigmas, rho, phi = split_x_multidimensional_function_space_operator(x, Ls, d, N,
+                                                                        N_boundary)
 
     S = get_tmp(S_cache, x)
     SV = get_tmp(SV_cache, x)
