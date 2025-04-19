@@ -324,7 +324,7 @@ end
                     @test isapprox(mass_matrix_boundary(D_sparsity_pattern, 1),
                                    compute_boundary_matrix(N); atol) # equal
 
-                    # This neeeds only 1 iteration
+                    # This needs only 1 iteration
                     x_poly_sparsity_pattern = SummationByPartsOperators.get_multidimensional_optimization_entries(D_poly;
                                                                                                                   sparsity_patterns)
                     D_sparsity_pattern_x0 = multidimensional_function_space_operator(basis,
@@ -1072,7 +1072,7 @@ N_y = 9
             @test isapprox(mass_matrix_boundary(D_t_MFSBP, 2),
                            mass_matrix_boundary(D_t, 2); atol) # equal
 
-            # This neeeds only 1 (or 2) iteration(s)
+            # This needs only 1 (or 2) iteration(s)
             x_tensor = SummationByPartsOperators.get_multidimensional_optimization_entries(D_t;
                                                                                            sparsity_patterns)
 
