@@ -5,7 +5,7 @@ DiffEqCallbacks = "459566f4-90b8-5000-8ac3-15dfb0a30def"
 ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 Optim = "429524aa-4258-5aef-a3af-852621145aeb"
-OrdinaryDiffEq = "1dea7af3-3e70-54e6-95c3-0bf5283fa5ed"
+OrdinaryDiffEqSSPRK = "669c94d9-1f4b-4b64-b377-1aa079aa2388"
 SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 SpecialFunctions = "276daf66-3868-5448-9aa4-cd146d93841b"
 StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
@@ -14,21 +14,11 @@ Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [compat]
 Aqua = "0.8"
-BandedMatrices = "0.17, 1"
-DiffEqCallbacks = "2, 3, 4"
-ForwardDiff = "0.10, 1"
-Optim = "1, 2"
-OrdinaryDiffEq = "5, 6"
+BandedMatrices = "1"
+DiffEqCallbacks = "2.35, 3, 4"
+ForwardDiff = "0.10.19, 1"
+Optim = "1.7.5, 2"
+OrdinaryDiffEqSSPRK = "1.5"
 SpecialFunctions = "1, 2"
-StaticArrays = "1.0"
-StructArrays = "0.6, 0.7"
-
-[preferences.OrdinaryDiffEq]
-PrecompileAutoSpecialize = false
-PrecompileAutoSwitch = false
-PrecompileDefaultSpecialize = false
-PrecompileFunctionWrapperSpecialize = false
-PrecompileLowStorage = false
-PrecompileNoSpecialize = false
-PrecompileNonStiff = false
-PrecompileStiff = false
+StaticArrays = "1.9.8"
+StructArrays = "0.6.17, 0.7"
